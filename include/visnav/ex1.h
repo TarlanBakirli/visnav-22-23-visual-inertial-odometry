@@ -43,8 +43,18 @@ template <class T>
 Eigen::Matrix<T, 3, 3> user_implemented_expmap(
     const Eigen::Matrix<T, 3, 1>& xi) {
   // TODO SHEET 1: implement
+  T t = xi.norm();
+
+  if (t == T(0)) {
+    return Eigen::Matrix<T, 3, 3>::Identity();
+  }
+
+  Eigen::Matrix<T, 3, 3> w_hat;
+  w_hat << 0, -xi(2), xi(1), xi(2), 0, -xi(0), -xi(1), xi(0), 0;
+
   UNUSED(xi);
-  return Eigen::Matrix<T, 3, 3>();
+  return Eigen::Matrix<T, 3, 3>::Identity() + sin(t) / t * w_hat +
+         (T(1) - cos(t)) / pow(t, T(2)) * (w_hat * w_hat);
 }
 
 // Implement log for SO(3)
@@ -52,8 +62,18 @@ template <class T>
 Eigen::Matrix<T, 3, 1> user_implemented_logmap(
     const Eigen::Matrix<T, 3, 3>& mat) {
   // TODO SHEET 1: implement
+  T t = acos((mat.trace() - T(1)) / T(2));
+
+  if (t == T(0)) {
+    return Eigen::Matrix<T, 3, 1>::Zero();
+  }
+
+  Eigen::Matrix<T, 3, 1> r;
+  r << mat(2, 1) - mat(1, 2), mat(0, 2) - mat(2, 0), mat(1, 0) - mat(0, 1);
+
+  Eigen::Matrix<T, 3, 1> v = (T(1) / (T(2) * sin(t))) * r;
   UNUSED(mat);
-  return Eigen::Matrix<T, 3, 1>();
+  return t * v;
 }
 
 // Implement exp for SE(3)
@@ -61,8 +81,29 @@ template <class T>
 Eigen::Matrix<T, 4, 4> user_implemented_expmap(
     const Eigen::Matrix<T, 6, 1>& xi) {
   // TODO SHEET 1: implement
+  Eigen::Matrix<T, 3, 1> v = xi.head(3);
+  Eigen::Matrix<T, 3, 1> w = xi.tail(3);
+
+  T t = w.norm();
+
+  Eigen::Matrix<T, 3, 3> w_hat;
+  w_hat << 0, -w(2), w(1), w(2), 0, -w(0), -w(1), w(0), 0;
+
+  Eigen::Matrix<T, 3, 3> J;
+  if (t == T(0)) {
+    J = Eigen::Matrix<T, 3, 3>::Identity();
+  } else {
+    J = Eigen::Matrix<T, 3, 3>::Identity() +
+        (T(1) - cos(t)) / pow(t, T(2)) * w_hat +
+        (t - sin(t)) / pow(t, T(3)) * (w_hat * w_hat);
+  }
+
+  Eigen::Matrix<T, 3, 3> SO3 = user_implemented_expmap(w);
+
+  Eigen::Matrix<T, 4, 4> result;
+  result << SO3, J * v, Eigen::Matrix<T, 1, 3>::Zero(), T(1);
   UNUSED(xi);
-  return Eigen::Matrix<T, 4, 4>();
+  return result;
 }
 
 // Implement log for SE(3)
@@ -70,8 +111,30 @@ template <class T>
 Eigen::Matrix<T, 6, 1> user_implemented_logmap(
     const Eigen::Matrix<T, 4, 4>& mat) {
   // TODO SHEET 1: implement
+  Eigen::Matrix<T, 3, 3> R = mat.block(0, 0, 3, 3);
+  Eigen::Matrix<T, 3, 1> t = mat.block(0, 3, 3, 1);
+
+  T theta = acos((R.trace() - T(1)) / T(2));
+
+  Eigen::Matrix<T, 3, 1> w;
+  Eigen::Matrix<T, 3, 3> J_inv;
+
+  if (theta == T(0)) {
+    w = Eigen::Matrix<T, 3, 1>::Zero();
+    J_inv = Eigen::Matrix<T, 3, 3>::Identity();
+  } else {
+    w = user_implemented_logmap(R);
+    Eigen::Matrix<T, 3, 3> w_hat;
+    w_hat << 0, -w(2), w(1), w(2), 0, -w(0), -w(1), w(0), 0;
+    J_inv = Eigen::Matrix<T, 3, 3>::Identity() - T(1) / T(2) * w_hat +
+            (T(1) / pow(theta, 2) -
+             (T(1) + cos(theta)) / (T(2) * theta * sin(theta))) *
+                (w_hat * w_hat);
+  }
+  Eigen::Matrix<T, 6, 1> result;
+  result << J_inv * t, w;
   UNUSED(mat);
-  return Eigen::Matrix<T, 6, 1>();
+  return result;  // Eigen::Matrix<T, 6, 1>();
 }
 
 }  // namespace visnav

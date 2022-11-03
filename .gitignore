@@ -9,7 +9,7 @@ data/V1_01_easy/
 *~
 opt_calib.json
 __pycache__
-
+.vscode
 
 # unignored files
 !/test/ex2_test_data/
