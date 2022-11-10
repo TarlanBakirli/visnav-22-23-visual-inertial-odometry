@@ -85,6 +85,8 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     Vec2 res;
 
     // TODO SHEET 2: implement camera model
+    res << fx * x / z + cx, fy * y / z + cy;
+
     UNUSED(fx);
     UNUSED(fy);
     UNUSED(cx);
@@ -105,6 +107,12 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     Vec3 res;
 
     // TODO SHEET 2: implement camera model
+
+    Scalar mx = (p[0] - cx) / fx;
+    Scalar my = (p[1] - cy) / fy;
+    Scalar frac = Scalar(1) / sqrt(mx * mx + my * my + Scalar(1));
+    res << frac * mx, frac * my, frac;
+
     UNUSED(p);
     UNUSED(fx);
     UNUSED(fy);
@@ -168,6 +176,10 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
     Vec2 res;
 
     // TODO SHEET 2: implement camera model
+    Scalar d = sqrt(beta * (x * x + y * y) + z * z);
+    Scalar frac = alpha * d + (Scalar(1) - alpha) * z;
+    res << fx * x / frac + cx, fy * y / frac + cy;
+
     UNUSED(fx);
     UNUSED(fy);
     UNUSED(cx);
@@ -192,6 +204,16 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
     Vec3 res;
 
     // TODO SHEET 2: implement camera model
+    Scalar mx = (p[0] - cx) / fx;
+    Scalar my = (p[1] - cy) / fy;
+    Scalar r_sq = mx * mx + my * my;
+    Scalar mz = (Scalar(1) - beta * alpha * alpha * r_sq) /
+                (alpha * sqrt(Scalar(1) -
+                              (Scalar(2) * alpha - Scalar(1)) * beta * r_sq) +
+                 (Scalar(1) - alpha));
+    Scalar frac = Scalar(1) / sqrt(mx * mx + my * my + mz * mz);
+    res << frac * mx, frac * my, frac * mz;
+
     UNUSED(p);
     UNUSED(fx);
     UNUSED(fy);
@@ -253,6 +275,11 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
     Vec2 res;
 
     // TODO SHEET 2: implement camera model
+    Scalar d1 = sqrt(x * x + y * y + z * z);
+    Scalar d2 = sqrt(x * x + y * y + (xi * d1 + z) * (xi * d1 + z));
+    Scalar frac = alpha * d2 + (Scalar(1) - alpha) * (xi * d1 + z);
+    res << fx * x / frac + cx, fy * y / frac + cy;
+
     UNUSED(fx);
     UNUSED(fy);
     UNUSED(cx);
@@ -277,6 +304,17 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
     Vec3 res;
 
     // TODO SHEET 2: implement camera model
+    Scalar mx = (p[0] - cx) / fx;
+    Scalar my = (p[1] - cy) / fy;
+    Scalar r_sq = mx * mx + my * my;
+    Scalar mz =
+        (Scalar(1) - alpha * alpha * r_sq) /
+        (alpha * sqrt(Scalar(1) - (Scalar(2) * alpha - Scalar(1)) * r_sq) +
+         Scalar(1) - alpha);
+    Scalar frac = (mz * xi + sqrt(mz * mz + (Scalar(1) - xi * xi) * r_sq)) /
+                  (mz * mz + r_sq);
+    res << frac * mx, frac * my, frac * mz - xi;
+
     UNUSED(p);
     UNUSED(fx);
     UNUSED(fy);
@@ -341,6 +379,16 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     Vec2 res;
 
     // TODO SHEET 2: implement camera model
+    Scalar r = sqrt(x * x + y * y);
+    if (r == Scalar(0)) {
+      res << cx, cy, Scalar(0);
+      return res;
+    }
+    Scalar t = atan2(r, z);
+    Scalar d = t * (Scalar(1) +
+                    t * t * (k1 + t * t * (k2 + t * t * (k3 + t * t * k4))));
+    res << fx * d * x / r + cx, fy * d * y / r + cy;
+
     UNUSED(fx);
     UNUSED(fy);
     UNUSED(cx);
@@ -365,11 +413,42 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     Vec3 res;
 
     // TODO SHEET 2: implement camera model
+    const Scalar& k1 = param[4];
+    const Scalar& k2 = param[5];
+    const Scalar& k3 = param[6];
+    const Scalar& k4 = param[7];
+
+    Scalar mx = (p[0] - cx) / fx;
+    Scalar my = (p[1] - cy) / fy;
+    Scalar r_u = sqrt(mx * mx + my * my);
+    Scalar t = Scalar(0);
+    for (int i = 0; i < 100; i++) {
+      t -= (t * (Scalar(1) +
+                 t * t * (k1 + t * t * (k2 + t * t * (k3 + t * t * k4)))) -
+            r_u) /
+           (Scalar(1) +
+            t * t *
+                (Scalar(3) * k1 +
+                 t * t *
+                     (Scalar(5) * k2 +
+                      t * t * (Scalar(7) * k3 + Scalar(9) * k4 * t * t))));
+    }
+    if (r_u == Scalar(0)) {
+      res << Scalar(0), Scalar(0), cos(t);
+    } else {
+      res << sin(t) * mx / r_u, sin(t) * my / r_u, cos(t);
+    }
+
     UNUSED(p);
     UNUSED(fx);
     UNUSED(fy);
     UNUSED(cx);
     UNUSED(cy);
+
+    UNUSED(k1);
+    UNUSED(k2);
+    UNUSED(k3);
+    UNUSED(k4);
 
     return res;
   }
