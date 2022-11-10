@@ -107,7 +107,6 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     Vec3 res;
 
     // TODO SHEET 2: implement camera model
-
     Scalar mx = (p[0] - cx) / fx;
     Scalar my = (p[1] - cy) / fy;
     Scalar frac = Scalar(1) / sqrt(mx * mx + my * my + Scalar(1));
@@ -133,8 +132,8 @@ template <typename Scalar = double>
 class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
  public:
   // NOTE: For convenience for serialization and handling different camera
-  // models in ceres functors, we use the same parameter vector size for all of
-  // them, even if that means that for some certain entries are unused /
+  // models in ceres functors, we use the same parameter vector size for all
+  // of them, even if that means that for some certain entries are unused /
   // constant 0.
   static constexpr int N = 8;
 
@@ -178,6 +177,7 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
     // TODO SHEET 2: implement camera model
     Scalar d = sqrt(beta * (x * x + y * y) + z * z);
     Scalar frac = alpha * d + (Scalar(1) - alpha) * z;
+
     res << fx * x / frac + cx, fy * y / frac + cy;
 
     UNUSED(fx);

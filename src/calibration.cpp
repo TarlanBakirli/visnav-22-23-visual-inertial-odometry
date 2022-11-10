@@ -349,10 +349,6 @@ void compute_projections() {
       Eigen::Vector3d p_3d = aprilgrid.aprilgrid_corner_pos_3d[i];
 
       // TODO SHEET 2: project point
-      // Eigen::Vector3d p_3d_c = (T_w_i * T_i_c).inverse() * p_3d;
-      // UNUSED(T_w_i);
-      // UNUSED(T_i_c);
-      // UNUSED(p_3d);
       Eigen::Vector2d p_2d = calib_cam.intrinsics[kv.first.cam_id]->project(
           (T_w_i * T_i_c).inverse() * p_3d);
 
@@ -366,22 +362,19 @@ void compute_projections() {
 void optimize() {
   // Build the problem.
   ceres::Problem problem;
-
   // TODO SHEET 2: setup optimization problem
-  // for every correpondent point pair
   for (const auto& kv : calib_corners) {
-    // Specify local update rule for our parameter
-    problem.AddParameterBlock(vec_T_w_i[kv.first.frame_id].data(),
-                              Sophus::SE3d::num_parameters,
-                              new Sophus::test::LocalParameterizationSE3);
     problem.AddParameterBlock(calib_cam.T_i_c[kv.first.cam_id].data(),
                               Sophus::SE3d::num_parameters,
                               new Sophus::test::LocalParameterizationSE3);
+    problem.AddParameterBlock(vec_T_w_i[kv.first.frame_id].data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
 
-    // for every corner pair
     for (size_t i = 0; i < kv.second.corners.size(); i++) {
       Eigen::Vector2d p_2d = kv.second.corners[i];
-      Eigen::Vector3d p_3d = aprilgrid.aprilgrid_corner_pos_3d[i];
+      Eigen::Vector3d p_3d =
+          aprilgrid.aprilgrid_corner_pos_3d[kv.second.corner_ids[i]];
 
       // Create and add cost function. Derivatives will be evaluated via
       // automatic differentiation
@@ -397,6 +390,7 @@ void optimize() {
                                calib_cam.intrinsics[kv.first.cam_id]->data());
     }
   }
+  problem.SetParameterBlockConstant(calib_cam.T_i_c[0].data());
 
   ceres::Solver::Options options;
   options.gradient_tolerance = 0.01 * Sophus::Constants<double>::epsilon();
