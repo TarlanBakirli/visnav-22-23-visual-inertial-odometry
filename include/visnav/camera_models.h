@@ -86,15 +86,6 @@ class PinholeCamera : public AbstractCamera<Scalar> {
 
     // TODO SHEET 2: implement camera model
     res << fx * x / z + cx, fy * y / z + cy;
-
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
     return res;
   }
 
@@ -111,13 +102,6 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     Scalar my = (p[1] - cy) / fy;
     Scalar frac = Scalar(1) / sqrt(mx * mx + my * my + Scalar(1));
     res << frac * mx, frac * my, frac;
-
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-
     return res;
   }
 
@@ -179,17 +163,6 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
     Scalar frac = alpha * d + (Scalar(1) - alpha) * z;
 
     res << fx * x / frac + cx, fy * y / frac + cy;
-
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(alpha);
-    UNUSED(beta);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
     return res;
   }
 
@@ -213,15 +186,6 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
                  (Scalar(1) - alpha));
     Scalar frac = Scalar(1) / sqrt(mx * mx + my * my + mz * mz);
     res << frac * mx, frac * my, frac * mz;
-
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(alpha);
-    UNUSED(beta);
-
     return res;
   }
 
@@ -279,17 +243,6 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
     Scalar d2 = sqrt(x * x + y * y + (xi * d1 + z) * (xi * d1 + z));
     Scalar frac = alpha * d2 + (Scalar(1) - alpha) * (xi * d1 + z);
     res << fx * x / frac + cx, fy * y / frac + cy;
-
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(xi);
-    UNUSED(alpha);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
     return res;
   }
 
@@ -314,14 +267,6 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
     Scalar frac = (mz * xi + sqrt(mz * mz + (Scalar(1) - xi * xi) * r_sq)) /
                   (mz * mz + r_sq);
     res << frac * mx, frac * my, frac * mz - xi;
-
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(xi);
-    UNUSED(alpha);
     return res;
   }
 
@@ -388,19 +333,6 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     Scalar d = t * (Scalar(1) +
                     t * t * (k1 + t * t * (k2 + t * t * (k3 + t * t * k4))));
     res << fx * d * x / r + cx, fy * d * y / r + cy;
-
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(k1);
-    UNUSED(k2);
-    UNUSED(k3);
-    UNUSED(k4);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
     return res;
   }
 
@@ -438,18 +370,6 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     } else {
       res << sin(t) * mx / r_u, sin(t) * my / r_u, cos(t);
     }
-
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-
-    UNUSED(k1);
-    UNUSED(k2);
-    UNUSED(k3);
-    UNUSED(k4);
-
     return res;
   }
 

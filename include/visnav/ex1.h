@@ -52,7 +52,6 @@ Eigen::Matrix<T, 3, 3> user_implemented_expmap(
   Eigen::Matrix<T, 3, 3> w_hat;
   w_hat << 0, -xi(2), xi(1), xi(2), 0, -xi(0), -xi(1), xi(0), 0;
 
-  UNUSED(xi);
   return Eigen::Matrix<T, 3, 3>::Identity() + sin(t) / t * w_hat +
          (T(1) - cos(t)) / pow(t, T(2)) * (w_hat * w_hat);
 }

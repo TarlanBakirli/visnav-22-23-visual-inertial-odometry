@@ -53,9 +53,7 @@ void computeEssential(const Sophus::SE3d& T_0_1, Eigen::Matrix3d& E) {
   const Eigen::Matrix3d R_0_1 = T_0_1.rotationMatrix();
 
   // TODO SHEET 3: compute essential matrix
-  UNUSED(E);
-  UNUSED(t_0_1);
-  UNUSED(R_0_1);
+  E << Sophus::SO3d::hat(t_0_1.normalized()) * R_0_1;
 }
 
 void findInliersEssential(const KeypointsData& kd1, const KeypointsData& kd2,
@@ -65,17 +63,15 @@ void findInliersEssential(const KeypointsData& kd1, const KeypointsData& kd2,
                           double epipolar_error_threshold, MatchData& md) {
   md.inliers.clear();
 
-  for (size_t j = 0; j < md.matches.size(); j++) {
-    const Eigen::Vector2d p0_2d = kd1.corners[md.matches[j].first];
-    const Eigen::Vector2d p1_2d = kd2.corners[md.matches[j].second];
+  for (auto const& match : md.matches) {
+    const Eigen::Vector2d p0_2d = kd1.corners[match.first];
+    const Eigen::Vector2d p1_2d = kd2.corners[match.second];
 
     // TODO SHEET 3: determine inliers and store in md.inliers
-    UNUSED(cam1);
-    UNUSED(cam2);
-    UNUSED(E);
-    UNUSED(epipolar_error_threshold);
-    UNUSED(p0_2d);
-    UNUSED(p1_2d);
+    if (abs(cam1->unproject(p0_2d).transpose() * E * cam2->unproject(p1_2d)) <
+        epipolar_error_threshold) {
+      md.inliers.push_back(match);
+    }
   }
 }
 
@@ -94,11 +90,57 @@ void findInliersRansac(const KeypointsData& kd1, const KeypointsData& kd2,
   // was successful, you should do non-linear refinement of the model parameters
   // using all inliers, and then re-estimate the inlier set with the refined
   // model parameters.
-  UNUSED(kd1);
-  UNUSED(kd2);
-  UNUSED(cam1);
-  UNUSED(cam2);
-  UNUSED(ransac_thresh);
-  UNUSED(ransac_min_inliers);
+
+  // construct data points for RANSAC from matches
+  opengv::bearingVectors_t bearingVectors1, bearingVectors2;
+  for (const auto& match : md.matches) {
+    const Eigen::Vector2d p0_2d = kd1.corners[match.first];
+    const Eigen::Vector2d p1_2d = kd2.corners[match.second];
+    bearingVectors1.push_back(cam1->unproject(p0_2d).normalized());
+    bearingVectors2.push_back(cam2->unproject(p1_2d).normalized());
+  }
+  // adapted from example on official website
+  // create the central relative adapter
+  opengv::relative_pose::CentralRelativeAdapter adapter(bearingVectors1,
+                                                        bearingVectors2);
+  // create a RANSAC object
+  opengv::sac::Ransac<
+      opengv::sac_problems::relative_pose::CentralRelativePoseSacProblem>
+      ransac;
+  // create a CentralRelativePoseSacProblem
+  // (set algorithm to STEWENIUS, NISTER, SEVENPT, or EIGHTPT)
+  std::shared_ptr<
+      opengv::sac_problems::relative_pose::CentralRelativePoseSacProblem>
+      relposeproblem_ptr(
+          new opengv::sac_problems::relative_pose::
+              CentralRelativePoseSacProblem(
+                  adapter, opengv::sac_problems::relative_pose::
+                               CentralRelativePoseSacProblem::NISTER));
+  // run ransac
+  ransac.sac_model_ = relposeproblem_ptr;
+  ransac.threshold_ = ransac_thresh;
+  ransac.computeModel();
+  // get the result
+  opengv::transformation_t best_transformation = ransac.model_coefficients_;
+
+  // non-linear optimization (using all available correspondences)
+  adapter.setR12(best_transformation.topLeftCorner(3, 3));
+  adapter.sett12(best_transformation.topRightCorner(3, 1).normalized());
+  opengv::transformation_t nonlinear_transformation =
+      opengv::relative_pose::optimize_nonlinear(adapter, ransac.inliers_);
+
+  // save the final matches
+  // select all the inlier samples whith respect to given model coefficients.
+  ransac.sac_model_->selectWithinDistance(nonlinear_transformation,
+                                          ransac.threshold_, ransac.inliers_);
+
+  if (ransac.inliers_.size() >= size_t(ransac_min_inliers)) {
+    for (const auto& inlier : ransac.inliers_)
+      md.inliers.push_back(md.matches[inlier]);
+    md.T_i_j = Sophus::SE3d(
+        nonlinear_transformation.topLeftCorner(3, 3),
+        nonlinear_transformation.topRightCorner(3, 1).normalized());
+  }
 }
+
 }  // namespace visnav
