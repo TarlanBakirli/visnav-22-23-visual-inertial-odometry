@@ -139,10 +139,6 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
   std::vector<TrackId> new_track_ids;
 
   // TODO SHEET 4: Triangulate all new features and add to the map
-  // UNUSED(calib_cam);
-  // UNUSED(feature_corners);
-  // UNUSED(cameras);
-  // UNUSED(landmarks);
   opengv::bearingVectors_t bearingVectors1, bearingVectors2;
 
   for (const auto& track_id : shared_track_ids) {

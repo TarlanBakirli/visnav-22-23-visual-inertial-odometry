@@ -61,10 +61,17 @@ void project_landmarks(
   // locations of the cameras. Put 2d coordinates of the projected points into
   // projected_points and the corresponding id of the landmark into
   // projected_track_ids.
-  UNUSED(current_pose);
-  UNUSED(cam);
-  UNUSED(landmarks);
-  UNUSED(cam_z_threshold);
+  for (const auto& landmark : landmarks) {
+    Eigen::Vector3d p_3d = current_pose.inverse() * landmark.second.p;
+    if (p_3d(2) >= cam_z_threshold) {
+      Eigen::Vector2d p_2d = cam->project(p_3d);
+      if (p_2d(0) >= 0 && p_2d(1) >= 0 && p_2d(0) <= cam->width() &&
+          p_2d(1) <= cam->height()) {
+        projected_points.push_back(p_2d);
+        projected_track_ids.push_back(landmark.first);
+      }
+    }
+  }
 }
 
 void find_matches_landmarks(
@@ -87,14 +94,40 @@ void find_matches_landmarks(
   // should be used to filter outliers the same way as in exercise 3. You should
   // fill md.matches with <featureId,trackId> pairs for the successful matches
   // that pass all tests.
-  UNUSED(kdl);
-  UNUSED(landmarks);
-  UNUSED(feature_corners);
-  UNUSED(projected_points);
-  UNUSED(projected_track_ids);
-  UNUSED(match_max_dist_2d);
-  UNUSED(feature_match_threshold);
-  UNUSED(feature_match_dist_2_best);
+
+  for (size_t featureId = 0; featureId < kdl.corners.size(); featureId++) {
+    int dist;
+    int smallest_dist = 256;
+    int second_smallest_dist = 256;
+    TrackId selected_track_id;
+    for (size_t i = 0; i < projected_points.size(); i++) {
+      if ((kdl.corners[featureId] - projected_points[i]).norm() <=
+          match_max_dist_2d) {
+        TrackId track_id = projected_track_ids[i];
+        int landmark_dist = 256;
+        for (const auto& obs : landmarks.at(track_id).obs) {
+          dist =
+              (kdl.corner_descriptors[featureId] ^
+               feature_corners.at(obs.first).corner_descriptors.at(obs.second))
+                  .count();
+          if (dist < landmark_dist) {
+            landmark_dist = dist;
+          }
+        }
+        if (landmark_dist <= smallest_dist) {
+          second_smallest_dist = smallest_dist;
+          smallest_dist = landmark_dist;
+          selected_track_id = track_id;
+        } else if (landmark_dist < second_smallest_dist) {
+          second_smallest_dist = landmark_dist;
+        }
+      }
+    }
+    if (second_smallest_dist >= smallest_dist * feature_match_dist_2_best &&
+        smallest_dist < feature_match_threshold) {
+      md.matches.push_back(std::make_pair(featureId, selected_track_id));
+    }
+  }
 }
 
 void localize_camera(const Sophus::SE3d& current_pose,
@@ -113,12 +146,51 @@ void localize_camera(const Sophus::SE3d& current_pose,
 
   // TODO SHEET 5: Find the pose (md.T_w_c) and the inliers (md.inliers) using
   // the landmark to keypoints matches and PnP. This should be similar to the
-  // localize_camera in exercise 4 but in this exercise we don't explicitly have
-  // tracks.
-  UNUSED(cam);
-  UNUSED(kdl);
-  UNUSED(landmarks);
-  UNUSED(reprojection_error_pnp_inlier_threshold_pixel);
+  // localize_camera in exercise 4 but in this exercise we don't explicitly
+  // have tracks.
+  opengv::bearingVectors_t bearingVectors;
+  opengv::points_t points;
+
+  for (const auto& match : md.matches) {
+    const Eigen::Vector2d p_2d = kdl.corners[match.first];
+    bearingVectors.push_back(cam->unproject(p_2d).normalized());
+    points.push_back(landmarks.at(match.second).p);
+  }
+
+  // create the central adapter
+  opengv::absolute_pose::CentralAbsoluteAdapter adapter(bearingVectors, points);
+  // create a Ransac object
+  opengv::sac::Ransac<
+      opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem>
+      ransac;
+  // create an AbsolutePoseSacProblem
+  // (algorithm is selectable: KNEIP, GAO, or EPNP)
+  std::shared_ptr<opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem>
+      absposeproblem_ptr(
+          new opengv::sac_problems::absolute_pose::AbsolutePoseSacProblem(
+              adapter, opengv::sac_problems::absolute_pose::
+                           AbsolutePoseSacProblem::KNEIP));
+  // run ransac
+  ransac.sac_model_ = absposeproblem_ptr;
+  ransac.threshold_ =
+      1.0 - cos(atan(reprojection_error_pnp_inlier_threshold_pixel / 500.0));
+  ransac.computeModel();
+  // get the result
+  opengv::transformation_t best_transformation = ransac.model_coefficients_;
+
+  // non-linear optimization (using all correspondences)
+  adapter.setR(best_transformation.topLeftCorner(3, 3));
+  adapter.sett(best_transformation.topRightCorner(3, 1).normalized());
+  opengv::transformation_t nonlinear_transformation =
+      opengv::absolute_pose::optimize_nonlinear(adapter, ransac.inliers_);
+
+  ransac.sac_model_->selectWithinDistance(nonlinear_transformation,
+                                          ransac.threshold_, ransac.inliers_);
+
+  for (const auto& inlier : ransac.inliers_)
+    md.inliers.push_back(md.matches[inlier]);
+  md.T_w_c = Sophus::SE3d(nonlinear_transformation.topLeftCorner(3, 3),
+                          nonlinear_transformation.topRightCorner(3, 1));
 }
 
 void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
@@ -136,24 +208,45 @@ void add_new_landmarks(const FrameCamId fcidl, const FrameCamId fcidr,
 
   // TODO SHEET 5: Add new landmarks and observations. Here md_stereo contains
   // stereo matches for the current frame and md contains feature to landmark
-  // matches for the left camera (camera 0). For all inlier feature to landmark
-  // matches add the observations to the existing landmarks. If the left
-  // camera's feature appears also in md_stereo.inliers, then add both
-  // observations. For all inlier stereo observations that were not added to the
-  // existing landmarks, triangulate and add new landmarks. Here
-  // next_landmark_id is a running index of the landmarks, so after adding a new
-  // landmark you should always increase next_landmark_id by 1.
-  UNUSED(fcidl);
-  UNUSED(fcidr);
-  UNUSED(kdl);
-  UNUSED(kdr);
-  UNUSED(calib_cam);
-  UNUSED(md_stereo);
-  UNUSED(md);
-  UNUSED(landmarks);
-  UNUSED(next_landmark_id);
-  UNUSED(t_0_1);
-  UNUSED(R_0_1);
+  // matches for the left camera (camera 0). For all inlier feature to
+  // landmark matches add the observations to the existing landmarks. If the
+  // left camera's feature appears also in md_stereo.inliers, then add both
+  // observations. For all inlier stereo observations that were not added to
+  // the existing landmarks, triangulate and add new landmarks. Here
+  // next_landmark_id is a running index of the landmarks, so after adding a
+  // new landmark you should always increase next_landmark_id by 1.
+
+  for (const auto& md_inlier : md.inliers) {
+    landmarks[md_inlier.second].obs[fcidl] = md_inlier.first;
+    for (const auto& stereo_inlier : md_stereo.inliers) {
+      if (md_inlier.first == stereo_inlier.first)
+        landmarks[md_inlier.second].obs[fcidr] = stereo_inlier.second;
+    }
+  }
+
+  // if exists in landmards
+  for (const auto& stereo_inlier : md_stereo.inliers) {
+    bool flag = 0;
+    for (const auto& md_inlier : md.inliers) {
+      if (md_inlier.first == stereo_inlier.first) {
+        flag = 1;
+      }
+    }
+    if (!flag) {
+      opengv::bearingVectors_t bearingVectors1, bearingVectors2;
+      bearingVectors1.push_back(calib_cam.intrinsics[fcidl.cam_id]->unproject(
+          kdl.corners[stereo_inlier.first]));
+      bearingVectors2.push_back(calib_cam.intrinsics[fcidr.cam_id]->unproject(
+          kdr.corners[stereo_inlier.second]));
+      opengv::relative_pose::CentralRelativeAdapter adapter(
+          bearingVectors1, bearingVectors2, t_0_1, R_0_1);
+      landmarks[next_landmark_id].p =
+          md.T_w_c * opengv::triangulation::triangulate(adapter, 0);
+      landmarks[next_landmark_id].obs.emplace(fcidl, stereo_inlier.first);
+      landmarks[next_landmark_id].obs.emplace(fcidr, stereo_inlier.second);
+      next_landmark_id++;
+    }
+  }
 }
 
 void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
@@ -162,14 +255,30 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
                           std::set<FrameId>& kf_frames) {
   kf_frames.emplace(fcidl.frame_id);
 
-  // TODO SHEET 5: Remove old cameras and observations if the number of keyframe
-  // pairs (left and right image is a pair) is larger than max_num_kfs. The ids
-  // of all the keyframes that are currently in the optimization should be
-  // stored in kf_frames. Removed keyframes should be removed from cameras and
-  // landmarks with no left observations should be moved to old_landmarks.
-  UNUSED(max_num_kfs);
-  UNUSED(cameras);
-  UNUSED(landmarks);
-  UNUSED(old_landmarks);
+  // TODO SHEET 5: Remove old cameras and observations if the number of
+  // keyframe pairs (left and right image is a pair) is larger than
+  // max_num_kfs. The ids of all the keyframes that are currently in the
+  // optimization should be stored in kf_frames. Removed keyframes should be
+  // removed from cameras and landmarks with no left observations should be
+  // moved to old_landmarks.
+
+  while (kf_frames.size() > max_num_kfs) {
+    FrameCamId old_fcidl = FrameCamId(*kf_frames.begin(), 0);
+    FrameCamId old_fcidr = FrameCamId(*kf_frames.begin(), 1);
+    cameras.erase(old_fcidl);
+    cameras.erase(old_fcidr);
+    std::set<TrackId> track_ids;
+    for (auto& landmark : landmarks) {
+      landmark.second.obs.erase(old_fcidl);
+      landmark.second.obs.erase(old_fcidr);
+      if (landmark.second.obs.size() == 0) {
+        TrackId track_id = landmark.first;
+        old_landmarks[track_id] = landmarks[track_id];
+        track_ids.emplace(track_id);
+      }
+    }
+    for (const auto& track_id : track_ids) landmarks.erase(track_id);
+    kf_frames.erase(kf_frames.begin());
+  }
 }
 }  // namespace visnav
