@@ -262,7 +262,7 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
   // removed from cameras and landmarks with no left observations should be
   // moved to old_landmarks.
 
-  while (kf_frames.size() > max_num_kfs) {
+  while (kf_frames.size() > size_t(max_num_kfs)) {
     FrameCamId old_fcidl = FrameCamId(*kf_frames.begin(), 0);
     FrameCamId old_fcidr = FrameCamId(*kf_frames.begin(), 1);
     cameras.erase(old_fcidl);
