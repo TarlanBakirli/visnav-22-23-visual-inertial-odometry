@@ -10,11 +10,11 @@ data/MH_01_easy
 *.cereal
 .DS_Store
 *~
-opt_calib.json
+# opt_calib.json
 __pycache__
 .vscode
 
-submission
+# submission
 
 # unignored files
 !/test/ex2_test_data/
