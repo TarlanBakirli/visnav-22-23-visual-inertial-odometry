@@ -4,12 +4,17 @@ CMakeLists.txt.user
 build
 thirdparty/build-*
 data/V1_01_easy/
+
+data/MH_01_easy
+
 *.cereal
 .DS_Store
 *~
 opt_calib.json
 __pycache__
 .vscode
+
+submission
 
 # unignored files
 !/test/ex2_test_data/

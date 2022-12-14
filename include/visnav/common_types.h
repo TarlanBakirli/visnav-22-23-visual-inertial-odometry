@@ -96,6 +96,28 @@ struct FrameCamId {
   }
 };
 
+struct IMUData {
+  // IMUData(const FrameId& new_frame_id, const CamId& new_cam_id)
+  //       : frame_id(new_frame_id), cam_id(new_cam_id){};
+
+  Eigen::Vector3d gyro;
+
+  Eigen::Vector3d accel;
+};
+
+struct GT_State {
+  Eigen::Quaterniond q;
+  Eigen::Vector3d pos;
+  Eigen::Vector3d vel;
+  Eigen::Vector3d accel_bias;
+  Eigen::Vector3d gyro_bias;
+};
+
+struct GT_Pose {
+  Eigen::Quaterniond q;
+  Eigen::Vector3d pos;
+};
+
 std::ostream& operator<<(std::ostream& os, const FrameCamId& fcid) {
   os << fcid.frame_id << "_" << fcid.cam_id;
   return os;

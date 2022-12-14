@@ -74,6 +74,7 @@ void draw_image_overlay(pangolin::View& v, size_t view_id);
 void change_display_to_image(const FrameCamId& fcid);
 void draw_scene();
 void load_data(const std::string& path, const std::string& calib_path);
+void load_imu_data(const std::string& path);
 bool next_step();
 void optimize();
 void compute_projections();
@@ -108,8 +109,13 @@ Calibration calib_cam_opt;
 /// loaded images
 tbb::concurrent_unordered_map<FrameCamId, std::string> images;
 
+tbb::concurrent_unordered_map<Timestamp, IMUData> imu_measurements;
+
 /// timestamps for all stereo pairs
 std::vector<Timestamp> timestamps;
+
+/// timestamps for all imu data
+std::vector<Timestamp> imu_timestamps;
 
 /// detected feature locations and descriptors
 Corners feature_corners;
@@ -239,6 +245,7 @@ int main(int argc, char** argv) {
   }
 
   load_data(dataset_path, cam_calib);
+  load_imu_data(dataset_path);
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -767,6 +774,115 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
   show_frame1.Meta().gui_changed = true;
   show_frame2.Meta().range[1] = images.size() / NUM_CAMS - 1;
   show_frame2.Meta().gui_changed = true;
+}
+
+// VIO Project: dataloader for IMUs and GT
+
+void load_imu_data(const std::string& dataset_path) {
+  const std::string timestams_path = dataset_path + "/imu0/data.csv";
+
+  std::ifstream f(timestams_path);
+
+  while (f) {
+    std::string line;
+    std::getline(f, line);
+
+    if (line.size() < 20 || line[0] == '#') continue;
+
+    {
+      std::string timestamp_str = line.substr(0, 19);
+      std::istringstream ss(timestamp_str);
+
+      char tmp;
+      Timestamp timestamp;
+
+      Eigen::Vector3d gyro, accel;
+
+      ss >> timestamp >> tmp >> gyro[0] >> tmp >> gyro[1] >> tmp >> gyro[2] >>
+          tmp >> accel[0] >> tmp >> accel[1] >> tmp >> accel[2];
+      imu_timestamps.push_back(timestamp);
+
+      IMUData imudata;
+      imudata.gyro = gyro;
+      imudata.accel = accel;
+      imu_measurements[timestamp] = imudata;
+    }
+
+    std::string img_name = line.substr(20, line.size() - 21);
+  }
+  std::cerr << "Loaded " << imu_measurements.size() << " IMUs" << std::endl;
+}
+
+void load_gt_data_state(const std::string& dataset_path) {
+  // data->gt_timestamps.clear();
+  // data->gt_pose_data.clear();
+  const std::string timestams_path =
+      dataset_path + "/cam0/data.csv";  // to be fixed
+
+  std::ifstream times(timestams_path);
+
+  int id = 0;
+
+  while (times) {
+    std::string line;
+    std::getline(times, line);
+
+    if (line.size() < 20 || line[0] == '#') continue;
+
+    {
+      std::string timestamp_str = line.substr(0, 19);
+      std::istringstream ss(timestamp_str);
+
+      char tmp;
+      Timestamp timestamp;
+      Eigen::Quaterniond q;
+      Eigen::Vector3d pos, vel, accel_bias, gyro_bias;
+
+      ss >> timestamp >> tmp >> pos[0] >> tmp >> pos[1] >> tmp >> pos[2] >>
+          tmp >> q.w() >> tmp >> q.x() >> tmp >> q.y() >> tmp >> q.z() >> tmp >>
+          vel[0] >> tmp >> vel[1] >> tmp >> vel[2] >> tmp >> accel_bias[0] >>
+          tmp >> accel_bias[1] >> tmp >> accel_bias[2] >> tmp >> gyro_bias[0] >>
+          tmp >> gyro_bias[1] >> tmp >> gyro_bias[2];
+
+      gt_state_timestamps.push_back(timestamp);
+    }
+
+    std::string img_name = line.substr(20, line.size() - 21);
+
+    for (int i = 0; i < NUM_CAMS; i++) {
+      FrameCamId fcid(id, i);
+
+      std::stringstream ss;
+      ss << dataset_path << "/cam" << i << "/data/" << img_name;
+
+      images[fcid] = ss.str();
+    }
+  }
+  std::cerr << "Loaded " << gt_state.size() << " image pairs" << std::endl;
+}
+
+void read_gt_data_pose(const std::string& path) {
+  data->gt_timestamps.clear();
+  data->gt_pose_data.clear();
+
+  std::ifstream f(path + "data.csv");
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line[0] == '#') continue;
+
+    std::stringstream ss(line);
+
+    char tmp;
+    uint64_t timestamp;
+    Eigen::Quaterniond q;
+    Eigen::Vector3d pos;
+
+    ss >> timestamp >> tmp >> pos[0] >> tmp >> pos[1] >> tmp >> pos[2] >> tmp >>
+        q.w() >> tmp >> q.x() >> tmp >> q.y() >> tmp >> q.z();
+
+    data->gt_timestamps.emplace_back(timestamp);
+    data->gt_pose_data.emplace_back(q, pos);
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
