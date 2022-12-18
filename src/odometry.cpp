@@ -64,6 +64,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <visnav/serialization.h>
 
+#include <basalt/imu/preintegration.h>
+// #include <basalt/imu/imu_types.h>
+
 using namespace visnav;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,26 +114,37 @@ Calibration calib_cam_opt;
 /// loaded images
 tbb::concurrent_unordered_map<FrameCamId, std::string> images;
 
+/////////////////////////////////////////////////////////////////////////////////////////
+// std::shared_ptr<ImuData> data;
+
+std::vector<basalt::ImuData<double>> data;
+
+std::vector<GT_State, Eigen::aligned_allocator<GT_State>> gt_state_data;
+
+std::vector<GT_Pose, Eigen::aligned_allocator<GT_Pose>> gt_pose_data;
+// std::vector<>
 // loaded IMUData
-tbb::concurrent_unordered_map<Timestamp, IMUData> imu_measurements;
+// tbb::concurrent_unordered_map<Timestamp, IMUData> imu_measurements;
 
-// loaded GT state
-tbb::concurrent_unordered_map<Timestamp, GT_State> gt_state_measurements;
+// // loaded GT state
+// tbb::concurrent_unordered_map<Timestamp, GT_State> gt_state_measurements;
 
-// loaded GT pose
-tbb::concurrent_unordered_map<Timestamp, GT_Pose> gt_pose_measurements;
+// // loaded GT pose
+// tbb::concurrent_unordered_map<Timestamp, GT_Pose> gt_pose_measurements;
 
 /// timestamps for all stereo pairs
 std::vector<Timestamp> timestamps;
 
 /// timestamps for all imu data
-std::vector<Timestamp> imu_timestamps;
+// std::vector<Timestamp> imu_timestamps;
 
 /// timestamps for all GT states
 std::vector<Timestamp> gt_state_timestamps;
 
 /// timestamps for all GT Poses
 std::vector<Timestamp> gt_pose_timestamps;
+
+///////////////////////////////////////////////////////////////////////////////////////////
 
 /// detected feature locations and descriptors
 Corners feature_corners;
@@ -242,7 +256,7 @@ Button next_step_btn("ui.next_step", &next_step);
 // process everything in non-gui mode).
 int main(int argc, char** argv) {
   bool show_gui = true;
-  std::string dataset_path = "data/V1_01_easy/mav0";
+  std::string dataset_path = "data/MH_01_easy/mav0";
   std::string cam_calib = "opt_calib.json";
 
   CLI::App app{"Visual odometry."};
@@ -796,6 +810,11 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
 // VIO Project: dataloader for IMUs and GT
 
 void load_imu_data(const std::string& dataset_path) {
+  // data
+
+  data.clear();
+  // data.gyro.clear();
+
   const std::string timestams_path = dataset_path + "/imu0/data.csv";
 
   std::ifstream f(timestams_path);
@@ -817,20 +836,27 @@ void load_imu_data(const std::string& dataset_path) {
 
       ss >> timestamp >> tmp >> gyro[0] >> tmp >> gyro[1] >> tmp >> gyro[2] >>
           tmp >> accel[0] >> tmp >> accel[1] >> tmp >> accel[2];
-      imu_timestamps.push_back(timestamp);
+      // imu_timestamps.push_back(timestamp);
 
-      IMUData imudata;
-      imudata.gyro = gyro;
-      imudata.accel = accel;
-      imu_measurements[timestamp] = imudata;
+      // IMUData imudata;
+      // imudata.gyro = gyro;
+      // imudata.accel = accel;
+      // imu_measurements[timestamp] = imudata;
+
+      data.emplace_back();
+      data.back().t_ns = timestamp;
+      data.back().accel = accel;
+      data.back().gyro = gyro;
     }
-
-    // std::string img_name = line.substr(20, line.size() - 21);
   }
-  std::cerr << "Loaded " << imu_measurements.size() << " IMUs" << std::endl;
+  std::cerr << "Loaded " << data.size() << " IMU_data" << std::endl;
+  // std::cerr << "Loaded " << data.gyro_data.size() << " gyro_data" <<
+  // std::endl;
 }
 
 void load_gt_data_state(const std::string& dataset_path) {
+  gt_state_data.clear();
+
   const std::string timestams_path =
       dataset_path + "/state_groundtruth_estimate0/data.csv";
   std::ifstream f(timestams_path);
@@ -855,22 +881,21 @@ void load_gt_data_state(const std::string& dataset_path) {
         tmp >> accel_bias[1] >> tmp >> accel_bias[2] >> tmp >> gyro_bias[0] >>
         tmp >> gyro_bias[1] >> tmp >> gyro_bias[2];
 
-    gt_state_timestamps.push_back(timestamp);
-
-    GT_State gt_state;
-    gt_state.pos = pos;
-    gt_state.q = q;
-    gt_state.vel = vel;
-    gt_state.accel_bias = accel_bias;
-    gt_state.gyro_bias = gyro_bias;
-    gt_state_measurements[timestamp] = gt_state;
+    gt_state_data.emplace_back();
+    gt_state_data.back().gt_timestamps = timestamp;
+    gt_state_data.back().pos = pos;
+    gt_state_data.back().q = q;
+    gt_state_data.back().vel = vel;
+    gt_state_data.back().accel_bias = accel_bias;
+    gt_state_data.back().gyro_bias = gyro_bias;
   }
-  std::cerr << "Loaded " << gt_state_measurements.size() << " GT states"
-            << std::endl;
+  std::cerr << "Loaded " << gt_state_data.size() << " GT states" << std::endl;
 }
 
 void load_gt_data_pose(const std::string& dataset_path) {
-  const std::string timestams_path = dataset_path + "/vicon0/data.csv";
+  gt_pose_data.clear();
+
+  const std::string timestams_path = dataset_path + "/leica0/data.csv";
   std::ifstream f(timestams_path);
 
   std::string line;
@@ -887,15 +912,12 @@ void load_gt_data_pose(const std::string& dataset_path) {
     ss >> timestamp >> tmp >> pos[0] >> tmp >> pos[1] >> tmp >> pos[2] >> tmp >>
         q.w() >> tmp >> q.x() >> tmp >> q.y() >> tmp >> q.z();
 
-    gt_pose_timestamps.push_back(timestamp);
-
-    GT_Pose gt_pose;
-    gt_pose.pos = pos;
-    gt_pose.q = q;
-    gt_pose_measurements[timestamp] = gt_pose;
+    gt_pose_data.emplace_back();
+    gt_pose_data.back().gt_timestamps = timestamp;
+    gt_pose_data.back().pos = pos;
+    gt_pose_data.back().q = q;
   }
-  std::cerr << "Loaded " << gt_pose_measurements.size() << " GT poses"
-            << std::endl;
+  std::cerr << "Loaded " << gt_pose_data.size() << " GT poses" << std::endl;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1139,4 +1161,24 @@ void optimize() {
 
   // Update project info cache
   compute_projections();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void initialize(int64_t t_ns) {
+  // seperate fixed window and local window
+
+  // predict states
+
+  const Eigen::aligned_map<int64_t, basalt::IntegratedImuMeasurement<double>>&
+      imu_meas;
+  imu_meas.at(t_ns).predictState();
+}
+
+void evaluate() {
+  // RMSE
+  // ATE
+  // Scale Error
+  // RMSE GT scale
+  // RPE
 }

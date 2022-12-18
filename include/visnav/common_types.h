@@ -96,16 +96,10 @@ struct FrameCamId {
   }
 };
 
-struct IMUData {
-  // IMUData(const FrameId& new_frame_id, const CamId& new_cam_id)
-  //       : frame_id(new_frame_id), cam_id(new_cam_id){};
-
-  Eigen::Vector3d gyro;
-
-  Eigen::Vector3d accel;
-};
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 struct GT_State {
+  int64_t gt_timestamps;
   Eigen::Quaterniond q;
   Eigen::Vector3d pos;
   Eigen::Vector3d vel;
@@ -114,9 +108,24 @@ struct GT_State {
 };
 
 struct GT_Pose {
+  int64_t gt_timestamps;
   Eigen::Quaterniond q;
   Eigen::Vector3d pos;
 };
+
+// struct GyroData {
+//   int64_t timestamp_ns;
+//   Eigen::Vector3d data;
+//   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+// };
+
+// struct AccelData {
+//   int64_t timestamp_ns;
+//   Eigen::Vector3d data;
+//   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+// };
+
+/////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream& operator<<(std::ostream& os, const FrameCamId& fcid) {
   os << fcid.frame_id << "_" << fcid.cam_id;

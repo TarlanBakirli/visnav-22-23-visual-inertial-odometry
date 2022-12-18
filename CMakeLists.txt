@@ -13,6 +13,8 @@ set(CERES_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/build-ceres-solver")
 set(PANGOLIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/build-Pangolin/src")
 set(OPENGV_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/build-opengv")
 
+set(BASALT_HEADERS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/basalt-headers")
+
 # Set default build type if not specified otherwise.
 # See https://cmake.org/pipermail/cmake/2012-May/050243.html
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -72,6 +74,7 @@ include_directories(thirdparty/Sophus)
 include_directories(thirdparty/cereal/include)
 include_directories(thirdparty/CLI11/include)
 include_directories(include)
+include_directories(thirdparty/basalt-headers/include)
 
 # to use link to target "ceres"
 # Note: always link to ceres first, as otherwise a system-wide install might
