@@ -45,6 +45,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opengv/sac_problems/absolute_pose/AbsolutePoseSacProblem.hpp>
 #include <opengv/triangulation/methods.hpp>
 
+#include <basalt/imu/imu_types.h>
+#include <basalt/imu/preintegration.h>
+
 namespace visnav {
 
 void project_landmarks(
@@ -281,4 +284,27 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
     kf_frames.erase(kf_frames.begin());
   }
 }
+
+void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
+                    std::vector<basalt::ImuData<double>>& imu_measurements) {
+
+  static const double accel_std_dev = 0.23;
+  static const double gyro_std_dev = 0.0027;
+
+  Eigen::Vector3d accel_cov, gyro_cov;
+  accel_cov.setConstant(accel_std_dev * accel_std_dev);
+  gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
+
+  // replace these
+
+  basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+
+  for (const auto& imudata : imu_measurements) {
+    if (imudata.t_ns >= last_t_ns && imudata.t_ns <= curr_t_ns) {
+      imu_meas.integrate(imudata, accel_cov, gyro_cov);
+    }
+  }
+
+}
+
 }  // namespace visnav

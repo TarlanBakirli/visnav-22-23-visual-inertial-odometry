@@ -12,6 +12,7 @@ set(EIGEN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/eigen")
 set(CERES_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/build-ceres-solver")
 set(PANGOLIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/build-Pangolin/src")
 set(OPENGV_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/build-opengv")
+# set(BASALT_HEADERS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/basalt-headers")
 
 # Set default build type if not specified otherwise.
 # See https://cmake.org/pipermail/cmake/2012-May/050243.html
@@ -71,6 +72,7 @@ message(STATUS "Found Eigen headers in: ${EIGEN3_INCLUDE_DIR}")
 include_directories(thirdparty/Sophus)
 include_directories(thirdparty/cereal/include)
 include_directories(thirdparty/CLI11/include)
+include_directories(thirdparty/basalt-headers/include)
 include_directories(include)
 
 # to use link to target "ceres"
@@ -117,7 +119,6 @@ target_link_libraries(sfm Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
 add_executable(odometry src/odometry.cpp)
 target_link_libraries(odometry Ceres::ceres pangolin TBB::tbb OpenCV opengv)
-
 
 
 enable_testing()

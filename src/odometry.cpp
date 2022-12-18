@@ -63,6 +63,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/tracks.h>
 
 #include <visnav/serialization.h>
+#include <basalt/imu/imu_types.h>
 
 using namespace visnav;
 
@@ -112,7 +113,8 @@ Calibration calib_cam_opt;
 tbb::concurrent_unordered_map<FrameCamId, std::string> images;
 
 // loaded IMUData
-tbb::concurrent_unordered_map<Timestamp, IMUData> imu_measurements;
+// tbb::concurrent_unordered_map<Timestamp, IMUData> imu_measurements;
+std::vector<basalt::ImuData<double>> imu_measurements;
 
 // loaded GT state
 tbb::concurrent_unordered_map<Timestamp, GT_State> gt_state_measurements;
@@ -242,7 +244,7 @@ Button next_step_btn("ui.next_step", &next_step);
 // process everything in non-gui mode).
 int main(int argc, char** argv) {
   bool show_gui = true;
-  std::string dataset_path = "data/V1_01_easy/mav0";
+  std::string dataset_path = "data/MH_01_easy/mav0";
   std::string cam_calib = "opt_calib.json";
 
   CLI::App app{"Visual odometry."};
@@ -819,13 +821,12 @@ void load_imu_data(const std::string& dataset_path) {
           tmp >> accel[0] >> tmp >> accel[1] >> tmp >> accel[2];
       imu_timestamps.push_back(timestamp);
 
-      IMUData imudata;
+      basalt::ImuData<double> imudata;
       imudata.gyro = gyro;
       imudata.accel = accel;
-      imu_measurements[timestamp] = imudata;
+      imudata.t_ns = timestamp;
+      imu_measurements.push_back(imudata);
     }
-
-    // std::string img_name = line.substr(20, line.size() - 21);
   }
   std::cerr << "Loaded " << imu_measurements.size() << " IMUs" << std::endl;
 }
@@ -870,7 +871,7 @@ void load_gt_data_state(const std::string& dataset_path) {
 }
 
 void load_gt_data_pose(const std::string& dataset_path) {
-  const std::string timestams_path = dataset_path + "/vicon0/data.csv";
+  const std::string timestams_path = dataset_path + "/leica0/data.csv";
   std::ifstream f(timestams_path);
 
   std::string line;
@@ -909,10 +910,25 @@ bool next_step() {
 
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
 
+  // integrate for each current frame
+  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
+
+  Timestamp curr_t_ns, last_t_ns;
+  std::istringstream issc(images.at(fcidl));
+  issc >> curr_t_ns;
+
+  if (current_frame == 0) {
+    last_t_ns = imu_measurements.at(0).t_ns;
+  } else {
+    FrameCamId fcid_prev(current_frame - 1, 0);
+    std::istringstream issl(images.at(fcid_prev));
+    issl >> last_t_ns;
+  }
+
+  integrate_imu(curr_t_ns, last_t_ns, imu_measurements);
+
   if (take_keyframe) {
     take_keyframe = false;
-
-    FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
         projected_points;
@@ -989,8 +1005,6 @@ bool next_step() {
     current_frame++;
     return true;
   } else {
-    FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
-
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
         projected_points;
     std::vector<TrackId> projected_track_ids;
