@@ -96,14 +96,12 @@ struct FrameCamId {
   }
 };
 
+/*
 struct IMUData {
-  // IMUData(const FrameId& new_frame_id, const CamId& new_cam_id)
-  //       : frame_id(new_frame_id), cam_id(new_cam_id){};
-
   Eigen::Vector3d gyro;
-
   Eigen::Vector3d accel;
 };
+*/
 
 struct GT_State {
   Eigen::Quaterniond q;
