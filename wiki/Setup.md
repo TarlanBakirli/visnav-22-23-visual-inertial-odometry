@@ -19,7 +19,7 @@ On other Linux distributions your milage may vary and you might need to adapt ho
 
 ### Configure gitlab
 
-After logging into https://gitlab.vision.in.tum.de you should
+After logging into https://visnav-ws22.gitlab.vision.in.tum.de you should
 [setup your SSH key](https://docs.gitlab.com/ee/gitlab-basics/create-your-ssh-keys.html)
 to easily pull/push from/to your repository.
 
@@ -32,7 +32,7 @@ Use the `--recursive` option to directly get all submodules as well.
 > Make a directory `/storage/local/<username>` (`/storage/local/` is your local hard drive) and install everything there.
 
 ```
-git clone --recursive git@gitlab.vision.in.tum.de:visnav_ws21/<username>/visnav.git
+git clone --recursive git@visnav-ws22.gitlab.vision.in.tum.de:visnav_ws22/<username>/visnav.git
 ```
 
 ### Install and configure QtCreator
