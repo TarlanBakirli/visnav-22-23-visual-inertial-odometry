@@ -245,7 +245,7 @@ Button next_step_btn("ui.next_step", &next_step);
 int main(int argc, char** argv) {
   bool show_gui = true;
   std::string dataset_path = "data/MH_01_easy/mav0";
-  std::string cam_calib = "opt_calib.json";
+  std::string cam_calib = "data/calibration.json";
 
   CLI::App app{"Visual odometry."};
 
@@ -829,6 +829,8 @@ void load_imu_data(const std::string& dataset_path) {
     }
   }
   std::cerr << "Loaded " << imu_measurements.size() << " IMUs" << std::endl;
+
+  // calibration already read in load_data, no need here
 }
 
 void load_gt_data_state(const std::string& dataset_path) {

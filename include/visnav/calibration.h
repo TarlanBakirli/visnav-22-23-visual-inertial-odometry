@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Eigen/Dense>
 #include <Eigen/StdVector>
 #include <sophus/se3.hpp>
+#include <basalt/calibration/calib_bias.hpp>
 
 #include <visnav/camera_models.h>
 #include <visnav/common_types.h>
@@ -78,6 +79,30 @@ struct LoadCalibration {
 
   // Camera intrinsics
   std::vector<CamT, Eigen::aligned_allocator<CamT>> intrinsics;
+
+  // Time offset between cameras and IMU in nanoseconds.
+  int64_t cam_time_offset_ns;
+
+  // Static accelerometer bias from calibration.
+  basalt::CalibAccelBias<double> calib_accel_bias;
+
+  // Static gyroscope bias from calibration.
+  basalt::CalibGyroBias<double> calib_gyro_bias;
+
+  // IMU update rate.
+  int imu_update_rate;
+
+  // Continuous time gyroscope noise standard deviation.
+  Eigen::Vector3d gyro_noise_std;
+  
+  // Continuous time accelerometer noise standard deviation.
+  Eigen::Vector3d accel_noise_std;
+
+  // Continuous time bias random walk standard deviation for gyroscope.
+  Eigen::Vector3d gyro_bias_std;
+
+  // Continuous time bias random walk standard deviation for accelerometer.
+  Eigen::Vector3d accel_bias_std;
 };
 
 struct Calibration {
@@ -90,6 +115,30 @@ struct Calibration {
 
   // Camera intrinsics
   std::vector<std::shared_ptr<AbstractCamera<double>>> intrinsics;
+
+  // Time offset between cameras and IMU in nanoseconds.
+  int64_t cam_time_offset_ns;
+
+  // Static accelerometer bias from calibration.
+  basalt::CalibAccelBias<double> calib_accel_bias;
+
+  // Static gyroscope bias from calibration.
+  basalt::CalibGyroBias<double> calib_gyro_bias;
+
+  // IMU update rate.
+  int imu_update_rate;
+
+  // Continuous time gyroscope noise standard deviation.
+  Eigen::Vector3d gyro_noise_std;
+  
+  // Continuous time accelerometer noise standard deviation.
+  Eigen::Vector3d accel_noise_std;
+
+  // Continuous time bias random walk standard deviation for gyroscope.
+  Eigen::Vector3d gyro_bias_std;
+
+  // Continuous time bias random walk standard deviation for accelerometer.
+  Eigen::Vector3d accel_bias_std;
 };
 
 }  // namespace visnav
