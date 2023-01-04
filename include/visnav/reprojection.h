@@ -39,6 +39,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <visnav/common_types.h>
 
+// #include <basalt/imu/preintegration.h>
+
 namespace visnav {
 
 template <class T>
@@ -96,6 +98,42 @@ struct BundleAdjustmentReprojectionCostFunctor {
 
   Eigen::Vector2d p_2d;
   std::string cam_model;
+};
+
+struct BundleAdjustmentIMUCostFunctor {
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  BundleAdjustmentIMUCostFunctor(
+      basalt::IntegratedImuMeasurement<double>& imu_meas)
+      : imu_meas(imu_meas) {}  // A "const" should be added maybe
+
+  template <class T>
+  bool operator()(T const* const sT, T const* const sv, T* sResiduals) const {
+    // map inputs
+    Eigen::Map<Sophus::SE3<T> const> const T(sT);
+    Eigen::Map<Sophus::SE3<T> const> const v(sv);
+    // Eigen::Map<Eigen::Matrix<T, 3, 1> const> const p_3d_w(sp_3d_w);
+
+    basalt::PoseVelState<double> const state0;  // initial state
+    basalt::PoseVelState<double> const state1;  // next state
+
+    Eigen::Map<Eigen::Vector3d const> const curr_bg(scurr_bg);
+    Eigen::Map<Eigen::Vector3d const> const curr_ba(scurr_ba);
+
+    Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(sResiduals);  // To be fixed
+    // const std::shared_ptr<AbstractCamera<T>> cam =
+    //     AbstractCamera<T>::from_data(cam_model, sIntr);
+
+    // PROJECT: Compute IMU error
+    residuals = imu_meas.residual(state0, basalt::constants::G, state1, curr_bg,
+                                  curr_ba);
+
+    return true;
+  }
+
+  // Eigen::Vector2d p_2d;
+  // std::string cam_model;
+  basalt::IntegratedImuMeasurement<double>& imu_meas;
 };
 
 }  // namespace visnav

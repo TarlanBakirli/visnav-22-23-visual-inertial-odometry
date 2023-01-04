@@ -196,6 +196,13 @@ struct Camera {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
+struct IMU {
+  /// IMU pose (transforms from IMU to world)
+  Sophus::SE3d T_w_i;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
 /// landmarks in the map
 struct Landmark {
   /// 3d position in world coordinates
@@ -214,6 +221,22 @@ struct Landmark {
 using Cameras =
     std::map<FrameCamId, Camera, std::less<FrameCamId>,
              Eigen::aligned_allocator<std::pair<const FrameCamId, Camera>>>;
+
+/// collection {frameId => IMU} for all IMUs in the map
+using IMUs = std::map<FrameId, IMU, std::less<FrameId>,
+                      Eigen::aligned_allocator<std::pair<const FrameId, IMU>>>;
+
+/// collection {frameId => IMU} for all IMUs in the map
+using imu_meas = std::map<
+    FrameId, basalt::IntegratedImuMeasurement<double>, std::less<FrameId>,
+    Eigen::aligned_allocator<
+        std::pair<const FrameId, basalt::IntegratedImuMeasurement<double>>>>;
+
+/// collection {frameId => PoseVelState} for all PoseVelState in the map
+using PoseVelStates =
+    std::map<FrameId, basalt::PoseVelBiasState<double>, std::less<FrameId>,
+             Eigen::aligned_allocator<
+                 std::pair<const FrameId, basalt::PoseVelBiasState<double>>>>;
 
 /// collection {trackId => Landmark} for all landmarks in the map.
 /// trackIds correspond to feature_tracks

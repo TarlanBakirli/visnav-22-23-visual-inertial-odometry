@@ -66,6 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/imu/imu_types.h>
 
 using namespace visnav;
+using namespace basalt;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Declarations
