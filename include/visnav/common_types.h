@@ -227,13 +227,13 @@ using IMUs = std::map<FrameId, IMU, std::less<FrameId>,
                       Eigen::aligned_allocator<std::pair<const FrameId, IMU>>>;
 
 /// collection {frameId => IMU} for all IMUs in the map
-using imu_meas = std::map<
+using IMU_MEAS = std::map<
     FrameId, basalt::IntegratedImuMeasurement<double>, std::less<FrameId>,
     Eigen::aligned_allocator<
         std::pair<const FrameId, basalt::IntegratedImuMeasurement<double>>>>;
 
-/// collection {frameId => PoseVelState} for all PoseVelState in the map
-using PoseVelStates =
+/// collection {frameId => PoseVelBiasState} for all PoseVelBiasState in the map
+using FRAME_STATE =
     std::map<FrameId, basalt::PoseVelBiasState<double>, std::less<FrameId>,
              Eigen::aligned_allocator<
                  std::pair<const FrameId, basalt::PoseVelBiasState<double>>>>;
