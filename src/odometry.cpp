@@ -161,6 +161,13 @@ Landmarks old_landmarks;
 /// determining outliers; indexed by images
 ImageProjections image_projections;
 
+/// For VIO project
+/// Initialization
+Eigen::Matrix<double, 3, 1> vel_w_i_init;
+Sophus::SE3d T_w_i_init;
+IMU_MEAS imu_meas;
+FRAME_STATE frame_states;
+
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
 ///////////////////////////////////////////////////////////////////////////////
@@ -266,6 +273,9 @@ int main(int argc, char** argv) {
   load_imu_data(dataset_path);
   load_gt_data_state(dataset_path);
   load_gt_data_pose(dataset_path);
+
+  // initialization
+  initialize(imu_measurements);
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);

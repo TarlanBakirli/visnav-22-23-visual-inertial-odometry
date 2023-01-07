@@ -322,41 +322,43 @@ void save_integrated_state(
 // initialize the ba and bg
 // (scale can be achieved from binocular, gravity is considered to be -9.81(z),
 // velocity is considered to be 0)
-void initialize(int64_t t_ns, const Sophus::SE3d& T_w_i,
-                const Eigen::Vector3d& vel_w_i,
-                std::vector<basalt::ImuData<double>> imu_measurements,
-                const Eigen::Vector3d& bg, const Eigen::Vector3d& ba) {
+// Only initialize for a few initial frames
+// input t_ns: the first t
+void initialize(std::vector<basalt::ImuData<double>> imu_measurements) {
   basalt::ImuData<double> data = imu_measurements.front();
-  while (data.t_ns < curr_frame.t_ns) {
-    // data = popFromImuDataQueue();
-    if (!data) break;
-    data.accel = calib_cam.calib_accel_bias.getCalibrated(data.accel);
-    data.gyro = calib_cam.calib_gyro_bias.getCalibrated(data.gyro);
-    // std::cout << "Skipping IMU data.." << std::endl;
-  }
+  int64_t t_ns = data.t_ns;
+  // to be fixed: t_ns is the time for first imu data
+  // but then we need the data for the first frame
+
+  // while (data.t_ns < curr_frame.t_ns) {
+  // data = popFromImuDataQueue();
+  // if (!data) break;
+  data.accel = calib_cam.calib_accel_bias.getCalibrated(data.accel);
+  data.gyro = calib_cam.calib_gyro_bias.getCalibrated(data.gyro);
+  // std::cout << "Skipping IMU data.." << std::endl;
+  // }
 
   using Vec3 = Eigen::Matrix<double, 3, 1>;
   Vec3 vel_w_i_init;
-  vel_w_i_init.setZero();
+  vel_w_i_init.setZero();  // for a few frames at the beginning, velocity is 0
 
-  Sophus::SE3d T_w_i_init = T_w_i;
+  Sophus::SE3d T_w_i_init;
   T_w_i_init.setQuaternion(
       Eigen::Quaternion<double>::FromTwoVectors(data.accel, Vec3::UnitZ()));
 
+  Eigen::Vector3d bg = Eigen::Vector3d::Zero();
+  Eigen::Vector3d ba = Eigen::Vector3d::Zero();
+
+  // We need integration here.
+  // To be fixed.
   int64_t last_state_t_ns = curr_frame->t_ns;
   IMU_MEAS imu_meas;
-  imu_meas[last_state_t_ns] =
-      IntegratedImuMeasurement<double>(last_state_t_ns, bg, ba);
+  imu_meas[0] = IntegratedImuMeasurement<double>(t_ns, bg, ba);
   FRAME_STATE frame_states;
-  frame_states[last_state_t_ns] = basalt::PoseVelBiasState<double>(
-      last_state_t_ns, T_w_i_init, vel_w_i_init, bg, ba, true);
+  frame_states[0] =
+      basalt::PoseVelBiasState<double>(t_ns, T_w_i_init, vel_w_i_init, bg, ba);
 
-  // marg_data.order.abs_order_map[last_state_t_ns] =
-  //     std::make_pair(0, POSE_VEL_BIAS_SIZE);
-  // marg_data.order.total_size = POSE_VEL_BIAS_SIZE;
-  // marg_data.order.items = 1;
-
-  std::cout << "Setting up filter: t_ns " << last_state_t_ns << std::endl;
+  std::cout << "Setting up filter: t_ns " << t_ns << std::endl;
   std::cout << "T_w_i\n" << T_w_i_init.matrix() << std::endl;
   std::cout << "vel_w_i " << vel_w_i_init.transpose() << std::endl;
 }
