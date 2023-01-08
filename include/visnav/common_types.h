@@ -47,6 +47,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <visnav/hash.h>
 
+#include <basalt/imu/imu_types.h>
+#include <basalt/imu/preintegration.h>
+
 #define UNUSED(x) (void)(x)
 
 namespace visnav {
