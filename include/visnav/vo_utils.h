@@ -295,15 +295,15 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
   static const Eigen::Vector3d G(0, 0, -9.81);
 
   Eigen::Vector3d accel_cov, gyro_cov;
-  accel_cov.setConstant(accel_std_dev * accel_std_dev);
-  gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
+  // accel_cov.setConstant(accel_std_dev * accel_std_dev);
+  // gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
+  accel_cov.setConstant(0);
+  gyro_cov.setConstant(0);
 
   // replace these
-  int64_t imu_size = 0;
   for (const auto& imudata : imu_measurements) {
     if (imudata.t_ns > last_t_ns && imudata.t_ns <= curr_t_ns) {
       imu_meas.integrate(imudata, accel_cov, gyro_cov);
-      imu_size++;
       std::cout << "accel: " << imudata.accel << std::endl;
       std::cout << "gyro: " << imudata.gyro << std::endl;
       std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
@@ -314,7 +314,8 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
   imu_meas.predictState(frame_states[current_frame - 1], G,
                         frame_states[current_frame]);
 
-  // std::cout << "frame_states.T_w_i " << frame_states.size() << std::endl;
+  std::cout << "integrated translation "
+            << frame_states[current_frame].T_w_i.translation() << std::endl;
 }
 
 // Transf

@@ -375,4 +375,97 @@ void bundle_adjustment(const Corners& feature_corners,
   }
 }
 
+// Run bundle adjustment to optimize cameras, points using frames and IMU
+void bundle_adjustment_with_IMU(const Corners& feature_corners,
+                                const BundleAdjustmentOptions& options,
+                                const std::set<FrameCamId>& fixed_cameras,
+                                Calibration& calib_cam, Cameras& cameras,
+                                Landmarks& landmarks,
+                                FRAME_STATE& frame_states) {
+  ceres::Problem problem;
+
+  // Setup optimization problem
+  // Define loss function
+  ceres::HuberLoss* loss_function =
+      options.use_huber ? new ceres::HuberLoss(options.huber_parameter)
+                        : nullptr;
+
+  // Add camera intrinsics
+  problem.AddParameterBlock(calib_cam.intrinsics[0]->data(), 8);
+  problem.AddParameterBlock(calib_cam.intrinsics[1]->data(), 8);
+  if (!options.optimize_intrinsics) {
+    problem.SetParameterBlockConstant(calib_cam.intrinsics[0]->data());
+    problem.SetParameterBlockConstant(calib_cam.intrinsics[1]->data());
+  }
+
+  // Add camera extrinsics
+  for (auto& camera : cameras) {
+    problem.AddParameterBlock(camera.second.T_w_c.data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
+
+    if (fixed_cameras.find(camera.first) != fixed_cameras.end()) {
+      problem.SetParameterBlockConstant(camera.second.T_w_c.data());
+    }
+  }
+
+  // Add landmarks and residual block
+  for (auto& landmark : landmarks) {
+    problem.AddParameterBlock(landmark.second.p.data(), 3);
+    // Add observations
+    for (const auto& obs : landmark.second.obs) {
+      Eigen::Vector2d p_2d =
+          feature_corners.at(obs.first).corners.at(obs.second);
+
+      // Create ceres cost function
+      ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<
+          BundleAdjustmentReprojectionCostFunctor, 2, 7, 3, 8>(
+          new BundleAdjustmentReprojectionCostFunctor(
+              p_2d, calib_cam.intrinsics[obs.first.cam_id]->name()));
+
+      problem.AddResidualBlock(cost_function, loss_function,
+                               cameras[obs.first].T_w_c.data(),
+                               landmark.second.p.data(),
+                               calib_cam.intrinsics[obs.first.cam_id]->data());
+    }
+  }
+  // Add residual block for IMU
+  for (auto& landmark : landmarks) {
+    problem.AddParameterBlock(landmark.second.p.data(), 3);
+    // Add observations
+    for (const auto& obs : landmark.second.obs) {
+      Eigen::Vector2d p_2d =
+          feature_corners.at(obs.first).corners.at(obs.second);
+
+      // Create ceres cost function
+      ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<
+          BundleAdjustmentReprojectionCostFunctor, 2, 7, 3, 8>(
+          new BundleAdjustmentReprojectionCostFunctor(
+              p_2d, calib_cam.intrinsics[obs.first.cam_id]->name()));
+
+      problem.AddResidualBlock(cost_function, loss_function,
+                               cameras[obs.first].T_w_c.data(),
+                               landmark.second.p.data(),
+                               calib_cam.intrinsics[obs.first.cam_id]->data());
+    }
+  }
+
+  // Solve
+  ceres::Solver::Options ceres_options;
+  ceres_options.max_num_iterations = options.max_num_iterations;
+  ceres_options.linear_solver_type = ceres::SPARSE_SCHUR;
+  ceres_options.num_threads = std::thread::hardware_concurrency();
+  ceres::Solver::Summary summary;
+  Solve(ceres_options, &problem, &summary);
+  switch (options.verbosity_level) {
+    // 0: silent
+    case 1:
+      std::cout << summary.BriefReport() << std::endl;
+      break;
+    case 2:
+      std::cout << summary.FullReport() << std::endl;
+      break;
+  }
+}
+
 }  // namespace visnav
