@@ -66,6 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/imu/imu_types.h>
 
 using namespace visnav;
+using namespace basalt;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Declarations
@@ -159,6 +160,15 @@ Landmarks old_landmarks;
 /// cameras, landmarks, and feature_tracks; used for visualization and
 /// determining outliers; indexed by images
 ImageProjections image_projections;
+
+/// For VIO project
+/// Initialization
+Eigen::Matrix<double, 3, 1> vel_w_i_init;
+Sophus::SE3d T_w_i_init;
+// IMU_MEAS imu_meas;
+FRAME_STATE frame_states;
+basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(),
+                                                  Eigen::Vector3d::Zero());
 
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
@@ -265,6 +275,9 @@ int main(int argc, char** argv) {
   load_imu_data(dataset_path);
   load_gt_data_state(dataset_path);
   load_gt_data_pose(dataset_path);
+
+  // initialization
+  initialize(imu_measurements, calib_cam, timestamps, frame_states);
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -798,6 +811,8 @@ void load_data(const std::string& dataset_path, const std::string& calib_path) {
 // VIO Project: dataloader for IMUs and GT
 
 void load_imu_data(const std::string& dataset_path) {
+  imu_measurements.clear();
+
   const std::string timestams_path = dataset_path + "/imu0/data.csv";
 
   std::ifstream f(timestams_path);
@@ -809,8 +824,7 @@ void load_imu_data(const std::string& dataset_path) {
     if (line.size() < 20 || line[0] == '#') continue;
 
     {
-      std::string timestamp_str = line.substr(0, 19);
-      std::istringstream ss(timestamp_str);
+      std::stringstream ss(line);
 
       char tmp;
       Timestamp timestamp;
@@ -828,6 +842,7 @@ void load_imu_data(const std::string& dataset_path) {
       imu_measurements.push_back(imudata);
     }
   }
+
   std::cerr << "Loaded " << imu_measurements.size() << " IMUs" << std::endl;
 
   // calibration already read in load_data, no need here
@@ -916,18 +931,31 @@ bool next_step() {
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   Timestamp curr_t_ns, last_t_ns;
-  std::istringstream issc(images.at(fcidl));
-  issc >> curr_t_ns;
-
-  if (current_frame == 0) {
-    last_t_ns = imu_measurements.at(0).t_ns;
-  } else {
-    FrameCamId fcid_prev(current_frame - 1, 0);
-    std::istringstream issl(images.at(fcid_prev));
-    issl >> last_t_ns;
+  // std::istringstream issc(images.at(fcidl));
+  // issc >> curr_t_ns;
+  if (current_frame != 0) {
+    curr_t_ns = timestamps[current_frame];
+    last_t_ns = timestamps[current_frame - 1];
+    std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
+    std::cout << "last_t_ns: " << last_t_ns << std::endl;
+    // std::cout << "unintegrated value " << imu_meas.get_d_state_d_ba()
+    //           << std::endl;
+    integrate_imu(curr_t_ns, last_t_ns, imu_measurements, imu_meas,
+                  frame_states, current_frame);
+    std::cout << "frame_states.size() " << frame_states.size() << std::endl;
+    // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
+    //           << std::endl;
   }
 
-  integrate_imu(curr_t_ns, last_t_ns, imu_measurements);
+  // if (current_frame == 0) {
+  //   last_t_ns = imu_measurements.at(0).t_ns;
+  // } else {
+  //   FrameCamId fcid_prev(current_frame - 1, 0);
+  //   std::istringstream issl(images.at(fcid_prev));
+  //   issl >> last_t_ns;
+  // }
+
+  // imu_timestamps[];
 
   if (take_keyframe) {
     take_keyframe = false;
