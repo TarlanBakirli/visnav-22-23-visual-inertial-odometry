@@ -100,42 +100,54 @@ struct BundleAdjustmentReprojectionCostFunctor {
   std::string cam_model;
 };
 
-// struct BundleAdjustmentIMUCostFunctor {
-//   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+struct BundleAdjustmentIMUCostFunctor {
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-//   BundleAdjustmentIMUCostFunctor(
-//       basalt::IntegratedImuMeasurement<double>& imu_meas)
-//       : imu_meas(imu_meas) {}  // A "const" should be added maybe
+  BundleAdjustmentIMUCostFunctor(
+      const basalt::IntegratedImuMeasurement<double>& imu_meas,
+      const Eigen::Vector3d& curr_bg, const Eigen::Vector3d& curr_ba)
+      : imu_meas(imu_meas), curr_bg(curr_bg), curr_ba(curr_ba) {}
 
-//   template <class T>
-//   bool operator()(T const* const sT, T const* const sv, T* sResiduals) const
-//   {
-//     // map inputs
-//     Eigen::Map<Sophus::SE3<T> const> const T(sT);
-//     Eigen::Map<Sophus::SE3<T> const> const v(sv);
-//     // Eigen::Map<Eigen::Matrix<T, 3, 1> const> const p_3d_w(sp_3d_w);
+  template <class T>
+  bool operator()(T const* const sT_w_0, T const* const sT_w_1,
+                  T const* const sv_0, T const* const sv_1,
+                  T* sResiduals) const {
+    // map inputs
+    Eigen::Map<Sophus::SE3<T> const> const T_w_0(sT_w_0);
+    Eigen::Map<Sophus::SE3<T> const> const T_w_1(sT_w_1);
+    Eigen::Map<Eigen::Matrix<T, 3, 1> const> const v_0(sv_0);
+    Eigen::Map<Eigen::Matrix<T, 3, 1> const> const v_1(sv_1);
+    // Error for bias should be added here:
+    // Eigen::Map<Eigen::Vector3d const> const curr_bg(scurr_bg);
+    // Eigen::Map<Eigen::Vector3d const> const curr_ba(scurr_ba);
 
-//     basalt::PoseVelState<double> const state0;  // initial state
-//     basalt::PoseVelState<double> const state1;  // next state
+    basalt::PoseVelState<T> const state0(0, T_w_0, v_0);  // initial state
+    basalt::PoseVelState<T> const state1(0, T_w_1, v_1);  // next state
+    // Should we change the t_ns?
+    // state0.T_w_i = T_w_0;
+    // state1.T_w_i = T_w_1;
+    // state0.vel_w_i = v_0;
+    // state1.vel_w_i = v_1;
 
-//     Eigen::Map<Eigen::Vector3d const> const curr_bg(scurr_bg);
-//     Eigen::Map<Eigen::Vector3d const> const curr_ba(scurr_ba);
+    Eigen::Map<Eigen::Matrix<T, 9, 1>> residuals(sResiduals);
+    // Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(sResiduals);  // To be fixed
+    // const std::shared_ptr<AbstractCamera<T>> cam =
+    //     AbstractCamera<T>::from_data(cam_model, sIntr);
 
-//     Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(sResiduals);  // To be fixed
-//     // const std::shared_ptr<AbstractCamera<T>> cam =
-//     //     AbstractCamera<T>::from_data(cam_model, sIntr);
+    static const Eigen::Vector3d G(0, 0, -9.81);
+    residuals = imu_meas.residual(state0, G, state1, curr_bg, curr_ba);
+    // std::cout << "Residuals.size " << residuals.size() << std::endl;
 
-//     // PROJECT: Compute IMU error
-//     residuals = imu_meas.residual(state0, basalt::constants::G, state1,
-//     curr_bg,
-//                                   curr_ba);
+    // Do we need this?
+    // error
+    // Scalar imu_error =
+    //     Scalar(0.5) * (imu_meas->get_sqrt_cov_inv() * res).squaredNorm();
+    return true;
+  }
 
-//     return true;
-//   }
-
-//   // Eigen::Vector2d p_2d;
-//   // std::string cam_model;
-//   basalt::IntegratedImuMeasurement<double>& imu_meas;
-// };
+  basalt::IntegratedImuMeasurement<double> imu_meas;
+  Eigen::Vector3d curr_bg;
+  Eigen::Vector3d curr_ba;
+};
 
 }  // namespace visnav

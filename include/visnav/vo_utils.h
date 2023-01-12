@@ -295,10 +295,10 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
   static const Eigen::Vector3d G(0, 0, -9.81);
 
   Eigen::Vector3d accel_cov, gyro_cov;
-  // accel_cov.setConstant(accel_std_dev * accel_std_dev);
-  // gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
-  accel_cov.setConstant(0);
-  gyro_cov.setConstant(0);
+  accel_cov.setConstant(accel_std_dev * accel_std_dev);
+  gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
+  // accel_cov.setConstant(0);
+  // gyro_cov.setConstant(0);
 
   // replace these
   for (const auto& imudata : imu_measurements) {
@@ -319,17 +319,18 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
 }
 
 // Transf
-void save_integrated_state(
-    std::vector<basalt::ImuData<double>>& imu_measurements) {
-  basalt::PoseVelState<double> state0;
-  basalt::PoseVelState<double> state1;
+// void save_integrated_state(
+//     std::vector<basalt::ImuData<double>>& imu_measurements) {
+//   basalt::PoseVelState<double> state0;
+//   basalt::PoseVelState<double> state1;
 
-  basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(),
-                                                    Eigen::Vector3d::Zero());
+//   basalt::IntegratedImuMeasurement<double> imu_meas(0,
+//   Eigen::Vector3d::Zero(),
+//                                                     Eigen::Vector3d::Zero());
 
-  static const Eigen::Vector3d G(0, 0, -9.81);
-  imu_meas.predictState(state0, G, state1);
-}
+//   static const Eigen::Vector3d G(0, 0, -9.81);
+//   imu_meas.predictState(state0, G, state1);
+// }
 
 // initialize the ba and bg
 // (scale can be achieved from binocular, gravity is considered to be -9.81(z),
