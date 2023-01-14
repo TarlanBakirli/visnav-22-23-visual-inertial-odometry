@@ -163,6 +163,9 @@ ImageProjections image_projections;
 
 /// For VIO project
 /// Initialization
+/// copy of IMUs for optimization in parallel thread
+IMUs imus_opt;
+
 Eigen::Matrix<double, 3, 1> vel_w_i_init;
 Sophus::SE3d T_w_i_init;
 // IMU_MEAS imu_meas;
@@ -1174,8 +1177,9 @@ void optimize() {
   opt_thread.reset(new std::thread([fid, ba_options] {
     std::set<FrameCamId> fixed_cameras = {{fid, 0}, {fid, 1}};
 
-    bundle_adjustment(feature_corners, ba_options, fixed_cameras, calib_cam_opt,
-                      cameras_opt, landmarks_opt);
+    bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
+                               calib_cam_opt, cameras_opt, landmarks_opt,
+                               imu_meas, frame_states, imus_opt);
 
     opt_finished = true;
     opt_running = false;

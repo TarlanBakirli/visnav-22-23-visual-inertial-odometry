@@ -433,12 +433,19 @@ void bundle_adjustment_with_IMU(
 
   // For IMU part:
   // Add IMU parameters
+  bool flag = 1;
   for (auto& imu : imus) {
     problem.AddParameterBlock(imu.second.T_w_i.data(),
                               Sophus::SE3d::num_parameters,
                               new Sophus::test::LocalParameterizationSE3);
+    std::cout << "imu.Twi.data(): " << imu.second.T_w_i.data() << std::endl;
+    if (flag == 1) {
+      problem.SetParameterBlockConstant(imu.second.T_w_i.data());
+      flag = 0;
+    }
   }
-  problem.SetParameterBlockConstant(imus[0].T_w_i.data());
+  // std::cout << "imu.Twi.data(): " << imus[0].T_w_i.data() << std::endl;
+
   // Add residual block for IMU
   // To be fixed
   for (auto& frame_state : frame_states) {
@@ -453,8 +460,8 @@ void bundle_adjustment_with_IMU(
     Eigen::Vector3d curr_bg = Eigen::Vector3d::Zero();
     Eigen::Vector3d curr_ba = Eigen::Vector3d::Zero();
     ceres::CostFunction* cost_function =
-        new ceres::AutoDiffCostFunction<BundleAdjustmentIMUCostFunctor, 9, 7, 7,
-                                        3, 3>(
+        new ceres::NumericDiffCostFunction<BundleAdjustmentIMUCostFunctor,
+                                           ceres::CENTRAL, 9, 7, 7, 3, 3>(
             new BundleAdjustmentIMUCostFunctor(imu_meas, curr_bg, curr_ba));
 
     problem.AddResidualBlock(

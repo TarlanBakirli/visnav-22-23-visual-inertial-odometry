@@ -124,10 +124,6 @@ struct BundleAdjustmentIMUCostFunctor {
     basalt::PoseVelState<T> const state0(0, T_w_0, v_0);  // initial state
     basalt::PoseVelState<T> const state1(0, T_w_1, v_1);  // next state
     // Should we change the t_ns?
-    // state0.T_w_i = T_w_0;
-    // state1.T_w_i = T_w_1;
-    // state0.vel_w_i = v_0;
-    // state1.vel_w_i = v_1;
 
     Eigen::Map<Eigen::Matrix<T, 9, 1>> residuals(sResiduals);
     // Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(sResiduals);  // To be fixed
