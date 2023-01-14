@@ -859,8 +859,8 @@ void load_gt_data_state(const std::string& dataset_path) {
 
     if (line.size() < 20 || line[0] == '#') continue;
 
-    std::string timestamp_str = line.substr(0, 19);
-    std::istringstream ss(timestamp_str);
+    // std::string timestamp_str = line.substr(0, 19);
+    std::istringstream ss(line);
 
     char tmp;
     Timestamp timestamp;
