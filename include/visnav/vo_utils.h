@@ -290,57 +290,52 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
                    std::vector<basalt::ImuData<double>>& imu_measurements,
                    basalt::IntegratedImuMeasurement<double>& imu_meas,
                    FRAME_STATE& frame_states, int current_frame) {
-  // static const double accel_std_dev = 0.23;
-  // static const double gyro_std_dev = 0.0027;
+  static const double accel_std_dev = 0.23;
+  static const double gyro_std_dev = 0.0027;
 
   static const Eigen::Vector3d G(0, 0, -9.81);
 
   Eigen::Vector3d accel_cov, gyro_cov;
-  // accel_cov.setConstant(accel_std_dev * accel_std_dev);
-  // gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
-  accel_cov.setConstant(0);
-  gyro_cov.setConstant(0);
+  accel_cov.setConstant(accel_std_dev * accel_std_dev);
+  gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
+  // accel_cov.setConstant(0);
+  // gyro_cov.setConstant(0);
 
   // replace these
   for (auto& imudata : imu_measurements) {
     if (imudata.t_ns > last_t_ns && imudata.t_ns <= curr_t_ns) {
-      // std::cout << "accel before calibr: " << imudata.accel << std::endl;
-      // std::cout << "gyro before calibr: " << imudata.gyro << std::endl;
 
       imudata.accel = calib_cam.calib_accel_bias.getCalibrated(imudata.accel);
       imudata.gyro = calib_cam.calib_gyro_bias.getCalibrated(imudata.gyro);
       
+      //check what is delta_state_ before calling integrate
+      // std::cout << "before delta state t_ns " << imu_meas.getDeltaState().t_ns << std::endl;
+      // std::cout << "before delta state velocity " << imu_meas.getDeltaState().vel_w_i << std::endl;
+      // std::cout << "before delta state rotation matrix " << imu_meas.getDeltaState().T_w_i.so3().matrix() << std::endl;
+      // std::cout << "before imudata t_ns " << imudata.t_ns << std::endl;
+      // std::cout << "before imudata accel " << imudata.accel << std::endl;
+
       imu_meas.integrate(imudata, accel_cov, gyro_cov);
       
-      std::cout << "accel: " << imudata.accel << std::endl;
-      std::cout << "gyro: " << imudata.gyro << std::endl;
-      std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
-                << std::endl;
+      //check what is delta_state_ after calling integrate
+      // std::cout << "after delta state t_ns " << imu_meas.getDeltaState().t_ns << std::endl;
+      // std::cout << "after delta state velocity " << imu_meas.getDeltaState().vel_w_i << std::endl;
+
+      // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
+      //           << std::endl;
     }
   }
   // FRAME_STATE frame_states;
   imu_meas.predictState(frame_states[current_frame - 1], G,
                         frame_states[current_frame]);
 
-  std::cout << "integrated translation "
-            << frame_states[current_frame].T_w_i.translation() << std::endl;
+  // std::cout << "integrated translation "
+  //           << frame_states[current_frame].T_w_i.translation() << std::endl;
+  std::cout << "integrated velocity "
+            << frame_states[current_frame].vel_w_i << std::endl;
   std::cout << "frame_state_t_ns " << frame_states[current_frame].t_ns << std::endl;
 }
 
-// Transf
-/*
-void save_integrated_state(
-    std::vector<basalt::ImuData<double>>& imu_measurements) {
-  basalt::PoseVelState<double> state0;
-  basalt::PoseVelState<double> state1;
-
-  basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(),
-                                                    Eigen::Vector3d::Zero());
-
-  static const Eigen::Vector3d G(0, 0, -9.81);
-  imu_meas.predictState(state0, G, state1);
-}
-*/
 // initialize the ba and bg
 // (scale can be achieved from binocular, gravity is considered to be -9.81(z),
 // velocity is considered to be 0)
