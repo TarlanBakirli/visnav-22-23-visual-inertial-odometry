@@ -286,11 +286,12 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
 }
 
 void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
+                   const Calibration& calib_cam,
                    std::vector<basalt::ImuData<double>>& imu_measurements,
                    basalt::IntegratedImuMeasurement<double>& imu_meas,
                    FRAME_STATE& frame_states, int current_frame) {
-  static const double accel_std_dev = 0.23;
-  static const double gyro_std_dev = 0.0027;
+  // static const double accel_std_dev = 0.23;
+  // static const double gyro_std_dev = 0.0027;
 
   static const Eigen::Vector3d G(0, 0, -9.81);
 
@@ -301,9 +302,16 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
   gyro_cov.setConstant(0);
 
   // replace these
-  for (const auto& imudata : imu_measurements) {
+  for (auto& imudata : imu_measurements) {
     if (imudata.t_ns > last_t_ns && imudata.t_ns <= curr_t_ns) {
+      // std::cout << "accel before calibr: " << imudata.accel << std::endl;
+      // std::cout << "gyro before calibr: " << imudata.gyro << std::endl;
+
+      imudata.accel = calib_cam.calib_accel_bias.getCalibrated(imudata.accel);
+      imudata.gyro = calib_cam.calib_gyro_bias.getCalibrated(imudata.gyro);
+      
       imu_meas.integrate(imudata, accel_cov, gyro_cov);
+      
       std::cout << "accel: " << imudata.accel << std::endl;
       std::cout << "gyro: " << imudata.gyro << std::endl;
       std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
@@ -316,9 +324,11 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
 
   std::cout << "integrated translation "
             << frame_states[current_frame].T_w_i.translation() << std::endl;
+  std::cout << "frame_state_t_ns " << frame_states[current_frame].t_ns << std::endl;
 }
 
 // Transf
+/*
 void save_integrated_state(
     std::vector<basalt::ImuData<double>>& imu_measurements) {
   basalt::PoseVelState<double> state0;
@@ -330,7 +340,7 @@ void save_integrated_state(
   static const Eigen::Vector3d G(0, 0, -9.81);
   imu_meas.predictState(state0, G, state1);
 }
-
+*/
 // initialize the ba and bg
 // (scale can be achieved from binocular, gravity is considered to be -9.81(z),
 // velocity is considered to be 0)

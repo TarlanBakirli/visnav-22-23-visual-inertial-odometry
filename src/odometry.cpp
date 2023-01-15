@@ -940,7 +940,7 @@ bool next_step() {
     std::cout << "last_t_ns: " << last_t_ns << std::endl;
     // std::cout << "unintegrated value " << imu_meas.get_d_state_d_ba()
     //           << std::endl;
-    integrate_imu(curr_t_ns, last_t_ns, imu_measurements, imu_meas,
+    integrate_imu(curr_t_ns, last_t_ns, calib_cam, imu_measurements, imu_meas,
                   frame_states, current_frame);
     std::cout << "frame_states.size() " << frame_states.size() << std::endl;
     // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
