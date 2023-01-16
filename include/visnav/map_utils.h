@@ -381,7 +381,8 @@ void bundle_adjustment_with_IMU(
     const std::set<FrameCamId>& fixed_cameras, Calibration& calib_cam,
     Cameras& cameras, Landmarks& landmarks,
     basalt::IntegratedImuMeasurement<double>& imu_meas,
-    FRAME_STATE& frame_states, IMUs& imus) {
+    FRAME_STATE& frame_states, std::set<FrameId> kf_frames) {
+  // , IMUs& imus
   ceres::Problem problem;
 
   // Setup optimization problem
@@ -433,43 +434,44 @@ void bundle_adjustment_with_IMU(
 
   // For IMU part:
   // Add IMU parameters
-  bool flag = 1;
-  for (auto& imu : imus) {
-    problem.AddParameterBlock(imu.second.T_w_i.data(),
-                              Sophus::SE3d::num_parameters,
-                              new Sophus::test::LocalParameterizationSE3);
-    std::cout << "imu.Twi.data(): " << imu.second.T_w_i.data() << std::endl;
-    if (flag == 1) {
-      problem.SetParameterBlockConstant(imu.second.T_w_i.data());
-      flag = 0;
-    }
-  }
+  // bool flag = 1;
+  // std::cout << "imus.size: " << imus.size() << std::endl;
+  // for (auto& imu : imus) {
+  //   problem.AddParameterBlock(imu.second.T_w_i.data(),
+  //                             Sophus::SE3d::num_parameters,
+  //                             new Sophus::test::LocalParameterizationSE3);
+  //   std::cout << "imu.Twi.data(): " << imu.second.T_w_i.data() << std::endl;
+  //   if (flag == 1) {
+  //     problem.SetParameterBlockConstant(imu.second.T_w_i.data());
+  //     flag = 0;
+  //   }
+  // }
   // std::cout << "imu.Twi.data(): " << imus[0].T_w_i.data() << std::endl;
 
   // Add residual block for IMU
-  // To be fixed
-  for (auto& frame_state : frame_states) {
-    problem.AddParameterBlock(frame_state.second.T_w_i.data(), 7);
-    problem.AddParameterBlock(frame_state.second.vel_w_i.data(), 3);
-    // Add observations
-    // for (const auto& obs : landmark.second.obs) {
-    //   Eigen::Vector2d p_2d =
-    //       feature_corners.at(obs.first).corners.at(obs.second);
+  // To be fixed: only consider keyframe.
 
-    // Create ceres cost function
+  // Create ceres cost function
+  if (kf_frames.size() >= 3) {
     Eigen::Vector3d curr_bg = Eigen::Vector3d::Zero();
     Eigen::Vector3d curr_ba = Eigen::Vector3d::Zero();
     ceres::CostFunction* cost_function =
         new ceres::NumericDiffCostFunction<BundleAdjustmentIMUCostFunctor,
                                            ceres::CENTRAL, 9, 7, 7, 3, 3>(
             new BundleAdjustmentIMUCostFunctor(imu_meas, curr_bg, curr_ba));
-
-    problem.AddResidualBlock(
-        cost_function, loss_function, frame_state.second.T_w_i.data(),
-        frame_states[frame_state.first - 1].T_w_i.data(),
-        frame_state.second.vel_w_i.data(),
-        frame_states[frame_state.first - 1].vel_w_i.data());
-    // }
+    auto it = kf_frames.end();
+    problem.AddParameterBlock(frame_states[*(--it)].T_w_i.data(), 7);
+    problem.AddParameterBlock(frame_states[*(--it)].vel_w_i.data(), 3);
+    problem.AddParameterBlock(frame_states[*(--(--it))].T_w_i.data(), 7);
+    problem.AddParameterBlock(frame_states[*(--(--it))].vel_w_i.data(), 3);
+    // std::cout << "value of it: " << *it << std::endl;
+    // std::cout << "value of it-1: " << *(--it) << std::endl;
+    // std::cout << "value of it-2: " << *(--(--it)) << std::endl;
+    problem.AddResidualBlock(cost_function, loss_function,
+                             frame_states[*(--it)].T_w_i.data(),
+                             frame_states[*(--(--it))].T_w_i.data(),
+                             frame_states[*(--it)].vel_w_i.data(),
+                             frame_states[*(--(--it))].vel_w_i.data());
   }
 
   // Solve

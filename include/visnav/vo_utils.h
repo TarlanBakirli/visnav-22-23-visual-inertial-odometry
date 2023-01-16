@@ -304,18 +304,18 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
   for (const auto& imudata : imu_measurements) {
     if (imudata.t_ns > last_t_ns && imudata.t_ns <= curr_t_ns) {
       imu_meas.integrate(imudata, accel_cov, gyro_cov);
-      std::cout << "accel: " << imudata.accel << std::endl;
-      std::cout << "gyro: " << imudata.gyro << std::endl;
-      std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
-                << std::endl;
+      // std::cout << "accel: " << imudata.accel << std::endl;
+      // std::cout << "gyro: " << imudata.gyro << std::endl;
+      // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
+      //           << std::endl;
     }
   }
   // FRAME_STATE frame_states;
   imu_meas.predictState(frame_states[current_frame - 1], G,
                         frame_states[current_frame]);
 
-  std::cout << "integrated translation "
-            << frame_states[current_frame].T_w_i.translation() << std::endl;
+  // std::cout << "integrated translation "
+  //           << frame_states[current_frame].T_w_i.translation() << std::endl;
 }
 
 // Transf

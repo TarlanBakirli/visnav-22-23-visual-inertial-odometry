@@ -170,6 +170,7 @@ Eigen::Matrix<double, 3, 1> vel_w_i_init;
 Sophus::SE3d T_w_i_init;
 // IMU_MEAS imu_meas;
 FRAME_STATE frame_states;
+FRAME_STATE keyframe_states;
 basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(),
                                                   Eigen::Vector3d::Zero());
 
@@ -1159,6 +1160,12 @@ void optimize() {
   // simple and the initial poses should be good from calibration.
   FrameId fid = *(kf_frames.begin());
   // std::cout << "fid " << fid << std::endl;
+  // std::cout << "kf_frames " << kf_frames.size() << std::endl;
+  // for (auto it = kf_frames.begin(); it != kf_frames.end();
+  //      it++)  // 使用迭代器进行遍历
+  // {
+  //   std::cout << "value of keyframe: " << *it << std::endl;
+  // }
 
   // Prepare bundle adjustment
   BundleAdjustmentOptions ba_options;
@@ -1179,7 +1186,7 @@ void optimize() {
 
     bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
                                calib_cam_opt, cameras_opt, landmarks_opt,
-                               imu_meas, frame_states, imus_opt);
+                               imu_meas, frame_states, kf_frames);  //, imus_opt
 
     opt_finished = true;
     opt_running = false;
