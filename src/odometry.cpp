@@ -168,10 +168,11 @@ IMUs imus_opt;
 
 Eigen::Matrix<double, 3, 1> vel_w_i_init;
 Sophus::SE3d T_w_i_init;
-// IMU_MEAS imu_meas;
+IMU_MEAS imu_meas_map;
 FRAME_STATE frame_states;
-basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(),
-                                                  Eigen::Vector3d::Zero());
+// basalt::IntegratedImuMeasurement<double> imu_meas(0, Eigen::Vector3d::Zero(),
+//                                                   Eigen::Vector3d::Zero());
+basalt::IntegratedImuMeasurement<double> imu_meas;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
@@ -280,7 +281,7 @@ int main(int argc, char** argv) {
   load_gt_data_pose(dataset_path);
 
   // initialization
-  initialize(imu_measurements, calib_cam, timestamps, frame_states);
+  initialize(imu_measurements, calib_cam, timestamps, imu_meas_map, frame_states);
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -934,9 +935,7 @@ bool next_step() {
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   Timestamp curr_t_ns, last_t_ns;
-  // std::istringstream issc(images.at(fcidl));
-  // issc >> curr_t_ns;
-  if (current_frame != 0) {
+  /*if (current_frame != 0) {
     curr_t_ns = timestamps[current_frame];
     last_t_ns = timestamps[current_frame - 1];
     std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
@@ -947,18 +946,24 @@ bool next_step() {
                   frame_states, current_frame);
     std::cout << "frame_states.size() " << frame_states.size() << std::endl;
     // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
-    //           << std::endl;
+    //           << std::endl;<
+  } else {
+    curr_t_ns = timestamps[current_frame];
+    last_t_ns = imu_timestamps[0];
+    integrate_imu(curr_t_ns, last_t_ns, calib_cam, imu_measurements, imu_meas, frame_states, current_frame);
+  }*/
+
+  curr_t_ns = timestamps[current_frame];
+  if (current_frame == 0) {    
+    last_t_ns = imu_timestamps[0];
+    imu_meas = imu_meas_map.at(current_frame);
+  } else {
+    last_t_ns = timestamps[current_frame - 1];
   }
 
-  // if (current_frame == 0) {
-  //   last_t_ns = imu_measurements.at(0).t_ns;
-  // } else {
-  //   FrameCamId fcid_prev(current_frame - 1, 0);
-  //   std::istringstream issl(images.at(fcid_prev));
-  //   issl >> last_t_ns;
-  // }
-
-  // imu_timestamps[];
+  std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
+  std::cout << "last_t_ns: " << last_t_ns << std::endl;
+  integrate_imu(curr_t_ns, last_t_ns, calib_cam, imu_measurements, imu_timestamps, imu_meas, frame_states, current_frame);
 
   if (take_keyframe) {
     take_keyframe = false;
