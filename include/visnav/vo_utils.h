@@ -285,15 +285,14 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
   }
 }
 
-void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
-                   const Calibration& calib_cam,
+void integrate_imu(const Calibration& calib_cam,
                    std::vector<basalt::ImuData<double>>& imu_measurements,
+                   std::vector<Timestamp>& timestamps,
                    std::vector<Timestamp>& imu_timestamps,
-                   basalt::IntegratedImuMeasurement<double>& imu_meas,
                    FRAME_STATE& frame_states, int current_frame) {
   // static const double accel_std_dev = 0.23;
   // static const double gyro_std_dev = 0.0027;
-
+  typename basalt::IntegratedImuMeasurement<double>::Ptr meas;
   static const Eigen::Vector3d G(0, 0, -9.81);
 
   Eigen::Vector3d accel_cov, gyro_cov;
@@ -302,19 +301,23 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
   accel_cov.setConstant(0);
   gyro_cov.setConstant(0);
 
-  auto it = find(imu_timestamps.begin(), imu_timestamps.end(), last_t_ns);
-  int idx;
-  if (it != imu_timestamps.end()) {
-    idx = it - imu_timestamps.begin();
-  } else {
-    std::cout << "Couldn't find, exit" << std::endl;
+  Timestamp curr_t_ns, last_t_ns;
+  curr_t_ns = timestamps[current_frame];
+  if (current_frame == 0) {
+    last_t_ns = imu_timestamps[0];
+    meas.reset(new basalt::IntegratedImuMeasurement<double>(imu_timestamps[0],
+                                                            imu_measurements[0].gyro,
+                                                            imu_measurements[0].accel));
   }
-  idx++;
+  else {
+    last_t_ns = timestamps[current_frame - 1];
+    meas.reset(new basalt::IntegratedImuMeasurement<double>(last_t_ns,
+                                                            frame_states[current_frame-1].bias_gyro,
+                                                            frame_states[current_frame-1].bias_accel));
+  }
 
-  if (current_frame != 0) {
-    imu_meas = basalt::IntegratedImuMeasurement<double>(imu_timestamps[idx],
-                                                        imu_measurements[idx].gyro, imu_measurements[idx].accel);
-  }
+  std::cout << "last_t_ns: " << last_t_ns << std::endl;
+  std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
 
   // replace these
   for (auto& imudata : imu_measurements) {
@@ -324,30 +327,25 @@ void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
       imudata.gyro = calib_cam.calib_gyro_bias.getCalibrated(imudata.gyro);
       
       //check what is delta_state_ before calling integrate
-      // std::cout << "before delta state t_ns " << imu_meas.getDeltaState().t_ns << std::endl;
-      // std::cout << "before delta state velocity " << imu_meas.getDeltaState().vel_w_i << std::endl;
-      // std::cout << "before delta state rotation matrix " << imu_meas.getDeltaState().T_w_i.so3().matrix() << std::endl;
-      // std::cout << "before imudata t_ns " << imudata.t_ns << std::endl;
-      // std::cout << "before imudata accel " << imudata.accel << std::endl;
+      std::cout << "before delta state velocity " << meas->getDeltaState().vel_w_i << std::endl;
 
-      imu_meas.integrate(imudata, accel_cov, gyro_cov);
+      meas->integrate(imudata, accel_cov, gyro_cov);
       
       //check what is delta_state_ after calling integrate
-      // std::cout << "after delta state t_ns " << imu_meas.getDeltaState().t_ns << std::endl;
-      std::cout << "after delta state velocity " << imu_meas.getDeltaState().vel_w_i << std::endl;
+      // std::cout << "after delta state velocity " << meas->getDeltaState().vel_w_i << std::endl;
     }
   }
   // FRAME_STATE frame_states;
-  imu_meas.predictState(frame_states[current_frame - 1], G,
+  meas->predictState(frame_states[current_frame - 1], G,
                         frame_states[current_frame]);
 
-  std::cout << "integrated rotation "
-            << frame_states[current_frame].T_w_i.so3().matrix() << std::endl;
-  std::cout << "integrated translation "
-            << frame_states[current_frame].T_w_i.translation() << std::endl;
+  // std::cout << "integrated rotation "
+  //           << frame_states[current_frame].T_w_i.so3().matrix() << std::endl;
+  // std::cout << "integrated translation "
+  //           << frame_states[current_frame].T_w_i.translation() << std::endl;
   std::cout << "integrated velocity "
             << frame_states[current_frame].vel_w_i << std::endl;
-  std::cout << "frame_state_t_ns " << frame_states[current_frame].t_ns << std::endl;
+  // std::cout << "frame_state_t_ns " << frame_states[current_frame].t_ns << std::endl;
   std::cout << "------" << std::endl;
 }
 

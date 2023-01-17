@@ -934,36 +934,7 @@ bool next_step() {
   // integrate for each current frame
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
-  Timestamp curr_t_ns, last_t_ns;
-  /*if (current_frame != 0) {
-    curr_t_ns = timestamps[current_frame];
-    last_t_ns = timestamps[current_frame - 1];
-    std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
-    std::cout << "last_t_ns: " << last_t_ns << std::endl;
-    // std::cout << "unintegrated value " << imu_meas.get_d_state_d_ba()
-    //           << std::endl;
-    integrate_imu(curr_t_ns, last_t_ns, calib_cam, imu_measurements, imu_meas,
-                  frame_states, current_frame);
-    std::cout << "frame_states.size() " << frame_states.size() << std::endl;
-    // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
-    //           << std::endl;<
-  } else {
-    curr_t_ns = timestamps[current_frame];
-    last_t_ns = imu_timestamps[0];
-    integrate_imu(curr_t_ns, last_t_ns, calib_cam, imu_measurements, imu_meas, frame_states, current_frame);
-  }*/
-
-  curr_t_ns = timestamps[current_frame];
-  if (current_frame == 0) {    
-    last_t_ns = imu_timestamps[0];
-    imu_meas = imu_meas_map.at(current_frame);
-  } else {
-    last_t_ns = timestamps[current_frame - 1];
-  }
-
-  std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
-  std::cout << "last_t_ns: " << last_t_ns << std::endl;
-  integrate_imu(curr_t_ns, last_t_ns, calib_cam, imu_measurements, imu_timestamps, imu_meas, frame_states, current_frame);
+  integrate_imu(calib_cam, imu_measurements, timestamps, imu_timestamps, frame_states, current_frame);
 
   if (take_keyframe) {
     take_keyframe = false;
