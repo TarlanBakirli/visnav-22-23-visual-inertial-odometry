@@ -376,12 +376,13 @@ void bundle_adjustment(const Corners& feature_corners,
 }
 
 // Run bundle adjustment to optimize cameras, points using frames and IMU
-void bundle_adjustment_with_IMU(
-    const Corners& feature_corners, const BundleAdjustmentOptions& options,
-    const std::set<FrameCamId>& fixed_cameras, Calibration& calib_cam,
-    Cameras& cameras, Landmarks& landmarks,
-    basalt::IntegratedImuMeasurement<double>& imu_meas,
-    FRAME_STATE& frame_states, std::set<FrameId> kf_frames) {
+void bundle_adjustment_with_IMU(const Corners& feature_corners,
+                                const BundleAdjustmentOptions& options,
+                                const std::set<FrameCamId>& fixed_cameras,
+                                Calibration& calib_cam, Cameras& cameras,
+                                Landmarks& landmarks, IMU_MEAS& imu_meas,
+                                FRAME_STATE& frame_states,
+                                std::set<FrameId> kf_frames) {
   // , IMUs& imus
   ceres::Problem problem;
 
@@ -433,45 +434,34 @@ void bundle_adjustment_with_IMU(
   }
 
   // For IMU part:
-  // Add IMU parameters
-  // bool flag = 1;
-  // std::cout << "imus.size: " << imus.size() << std::endl;
-  // for (auto& imu : imus) {
-  //   problem.AddParameterBlock(imu.second.T_w_i.data(),
-  //                             Sophus::SE3d::num_parameters,
-  //                             new Sophus::test::LocalParameterizationSE3);
-  //   std::cout << "imu.Twi.data(): " << imu.second.T_w_i.data() << std::endl;
-  //   if (flag == 1) {
-  //     problem.SetParameterBlockConstant(imu.second.T_w_i.data());
-  //     flag = 0;
-  //   }
-  // }
-  // std::cout << "imu.Twi.data(): " << imus[0].T_w_i.data() << std::endl;
-
   // Add residual block for IMU
-  // To be fixed: only consider keyframe.
-
+  for (const auto& kf_frame : kf_frames) {
+    problem.AddParameterBlock(frame_states[kf_frame].T_w_i.data(), 7,
+                              new Sophus::test::LocalParameterizationSE3);
+    problem.AddParameterBlock(frame_states[kf_frame].vel_w_i.data(), 3);
+    if (kf_frame == *kf_frames.begin())
+      problem.SetParameterBlockConstant(frame_states[kf_frame].vel_w_i.data());
+    // problem.AddParameterBlock(frame_states[--kf_frame].T_w_i.data(), 7,
+    //                           new Sophus::test::LocalParameterizationSE3);
+    // problem.AddParameterBlock(frame_states[--kf_frame].vel_w_i.data(), 3);
+  }
   // Create ceres cost function
-  if (kf_frames.size() >= 3) {
+  if (kf_frames.size() > 1) {
     Eigen::Vector3d curr_bg = Eigen::Vector3d::Zero();
     Eigen::Vector3d curr_ba = Eigen::Vector3d::Zero();
-    ceres::CostFunction* cost_function =
-        new ceres::NumericDiffCostFunction<BundleAdjustmentIMUCostFunctor,
-                                           ceres::CENTRAL, 9, 7, 7, 3, 3>(
-            new BundleAdjustmentIMUCostFunctor(imu_meas, curr_bg, curr_ba));
-    auto it = kf_frames.end();
-    problem.AddParameterBlock(frame_states[*(--it)].T_w_i.data(), 7);
-    problem.AddParameterBlock(frame_states[*(--it)].vel_w_i.data(), 3);
-    problem.AddParameterBlock(frame_states[*(--(--it))].T_w_i.data(), 7);
-    problem.AddParameterBlock(frame_states[*(--(--it))].vel_w_i.data(), 3);
-    // std::cout << "value of it: " << *it << std::endl;
-    // std::cout << "value of it-1: " << *(--it) << std::endl;
-    // std::cout << "value of it-2: " << *(--(--it)) << std::endl;
-    problem.AddResidualBlock(cost_function, loss_function,
-                             frame_states[*(--it)].T_w_i.data(),
-                             frame_states[*(--(--it))].T_w_i.data(),
-                             frame_states[*(--it)].vel_w_i.data(),
-                             frame_states[*(--(--it))].vel_w_i.data());
+
+    for (auto kf_frame : kf_frames) {
+      ceres::CostFunction* cost_function =
+          new ceres::NumericDiffCostFunction<BundleAdjustmentIMUCostFunctor,
+                                             ceres::CENTRAL, 9, 7, 7, 3, 3>(
+              new BundleAdjustmentIMUCostFunctor(imu_meas[kf_frame], curr_bg,
+                                                 curr_ba));
+      problem.AddResidualBlock(cost_function, loss_function,
+                               frame_states[kf_frame].T_w_i.data(),
+                               frame_states[kf_frame++].T_w_i.data(),
+                               frame_states[kf_frame].vel_w_i.data(),
+                               frame_states[kf_frame++].vel_w_i.data());
+    }
   }
 
   // Solve

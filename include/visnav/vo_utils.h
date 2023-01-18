@@ -285,6 +285,33 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
   }
 }
 
+void remove_old_keyframes_with_IMU(const FrameCamId fcidl,
+                                   const int max_num_kfs, Cameras& cameras,
+                                   Landmarks& landmarks,
+                                   Landmarks& old_landmarks,
+                                   std::set<FrameId>& kf_frames) {
+  kf_frames.emplace(fcidl.frame_id);
+
+  while (kf_frames.size() > size_t(max_num_kfs)) {
+    FrameCamId old_fcidl = FrameCamId(*kf_frames.begin(), 0);
+    FrameCamId old_fcidr = FrameCamId(*kf_frames.begin(), 1);
+    cameras.erase(old_fcidl);
+    cameras.erase(old_fcidr);
+    std::vector<TrackId> track_ids;
+    for (auto& landmark : landmarks) {
+      landmark.second.obs.erase(old_fcidl);
+      landmark.second.obs.erase(old_fcidr);
+      if (landmark.second.obs.size() == 0) {
+        TrackId track_id = landmark.first;
+        old_landmarks[track_id] = landmarks[track_id];
+        track_ids.push_back(track_id);
+      }
+    }
+    for (const auto& track_id : track_ids) landmarks.erase(track_id);
+    kf_frames.erase(kf_frames.begin());
+  }
+}
+
 void integrate_imu(const Timestamp curr_t_ns, const Timestamp last_t_ns,
                    std::vector<basalt::ImuData<double>>& imu_measurements,
                    basalt::IntegratedImuMeasurement<double>& imu_meas,
