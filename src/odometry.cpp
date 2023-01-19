@@ -94,7 +94,7 @@ constexpr int NUM_CAMS = 2;
 /// Variables
 ///////////////////////////////////////////////////////////////////////////////
 
-int current_frame;  // default: = 0
+int current_frame = 0;  // default: = 0
 Sophus::SE3d current_pose;
 bool take_keyframe = true;
 TrackId next_landmark_id = 0;
@@ -170,13 +170,13 @@ Eigen::Matrix<double, 3, 1> vel_w_i_init;
 Sophus::SE3d T_w_i_init;
 IMU_MEAS imu_meas;
 FRAME_STATE frame_states;
-int new_frame = 0;
-std::set<FrameId> buffer_frames;
-int max_num_buffers = 3;
+// int new_frame = 0;
+// std::set<FrameId> buffer_frames;
+// int max_num_buffers = 3;
 // FRAME_STATE keyframe_states;
-basalt::IntegratedImuMeasurement<double> imu_meas_init(1403636579753555584,
-                                                       Eigen::Vector3d::Zero(),
-                                                       Eigen::Vector3d::Zero());
+// basalt::IntegratedImuMeasurement<double> imu_meas_init(1403636579753555584,
+//                                                        Eigen::Vector3d::Zero(),
+//                                                        Eigen::Vector3d::Zero());
 
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
@@ -286,8 +286,8 @@ int main(int argc, char** argv) {
   load_gt_data_pose(dataset_path);
 
   // initialization
-  initialize(imu_measurements, calib_cam, timestamps, frame_states);
-  imu_meas[0] = imu_meas_init;
+  initialize(current_frame, imu_measurements, calib_cam, timestamps, imu_meas,
+             frame_states);
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -933,18 +933,12 @@ void load_gt_data_pose(const std::string& dataset_path) {
 // Execute next step in the overall odometry pipeline. Call this repeatedly
 // until it returns false for automatic execution.
 bool next_step() {
-  std::cout << "FrameId of new frame: " << new_frame << std::endl;
-  buffer_frames.emplace(new_frame);
-  if (buffer_frames.size() > size_t(max_num_buffers))
-    buffer_frames.erase(buffer_frames.begin());
+  // std::cout << "FrameId of new frame: " << new_frame << std::endl;
+  // buffer_frames.emplace(new_frame);
+  // if (buffer_frames.size() > size_t(max_num_buffers))
+  //   buffer_frames.erase(buffer_frames.begin());
 
-  std::cout << "largest element of buffer_frames:\n"
-            << *(buffer_frames.rbegin()) << std::endl
-            << "smallest element of buffer_frames:\n"
-            << *buffer_frames.begin() << std::endl
-            << "size of buffer_frames:\n"
-            << buffer_frames.size() << std::endl;
-  current_frame = *buffer_frames.rbegin();
+  // current_frame = *buffer_frames.rbegin();
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
 
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
@@ -955,21 +949,19 @@ bool next_step() {
   Timestamp curr_t_ns, last_t_ns;
   // std::istringstream issc(images.at(fcidl));
   // issc >> curr_t_ns;
-  if (current_frame != 0) {
-    curr_t_ns = timestamps[current_frame];
-    last_t_ns = timestamps[current_frame - 1];
-    // std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
-    // std::cout << "last_t_ns: " << last_t_ns << std::endl;
-    // std::cout << "unintegrated value " << imu_meas.get_d_state_d_ba()
-    //           << std::endl;
-    integrate_imu(curr_t_ns, last_t_ns, imu_measurements,
-                  imu_meas[current_frame], frame_states, current_frame);
+  if (current_frame > 0) {
+    // curr_t_ns = timestamps[current_frame];
+    // last_t_ns = timestamps[current_frame - 1];
+
+    integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
+                  imu_meas, frame_states);
     // std::cout << "frame_states.size() " << frame_states.size() << std::endl;
     // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
     //           << std::endl;
     std::cout << "imu_meas.size(): " << imu_meas.size() << std::endl;
-    std::cout << "imu_meas.[current_frame]:"
-              << imu_meas[current_frame].get_dt_ns() << std::endl;
+    std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
+    // std::cout << "imu_meas.[current_frame]:"
+    //           << imu_meas[current_frame - 1].get_dt_ns() << std::endl;
   }
 
   if (take_keyframe) {
@@ -1049,7 +1041,7 @@ bool next_step() {
 
     compute_projections();
 
-    new_frame++;  // default: current_frame++
+    current_frame++;  // default: current_frame++ //change->new_frame++
     return true;
   } else {
     std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
@@ -1102,7 +1094,7 @@ bool next_step() {
     change_display_to_image(fcidl);
     change_display_to_image(fcidr);
 
-    new_frame++;  // default: current_frame++
+    current_frame++;  // default: current_frame++
     return true;
   }
 }
@@ -1197,9 +1189,10 @@ void optimize() {
   opt_thread.reset(new std::thread([fid, ba_options] {
     std::set<FrameCamId> fixed_cameras = {{fid, 0}, {fid, 1}};
 
-    bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
-                               calib_cam_opt, cameras_opt, landmarks_opt,
-                               imu_meas, frame_states, kf_frames);  //, imus_opt
+    // bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
+    //                            calib_cam_opt, cameras_opt, landmarks_opt,
+    //                            imu_meas, frame_states, kf_frames);  //,
+    //                            imus_opt
 
     opt_finished = true;
     opt_running = false;
