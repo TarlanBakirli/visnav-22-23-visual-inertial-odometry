@@ -283,6 +283,9 @@ int main(int argc, char** argv) {
   // initialization
   initialize(imu_measurements, calib_cam, timestamps, imu_meas_map, frame_states);
 
+  std::cout << "frame_states[0] T_w_i_init matrix\n"
+            << frame_states[0].T_w_i.so3().matrix() << std::endl;
+
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
 
@@ -934,7 +937,9 @@ bool next_step() {
   // integrate for each current frame
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
-  integrate_imu(calib_cam, imu_measurements, timestamps, imu_timestamps, frame_states, current_frame);
+  if (current_frame > 0) {
+    integrate_imu(calib_cam, imu_measurements, timestamps, frame_states, imu_meas_map, current_frame);
+  }
 
   if (take_keyframe) {
     take_keyframe = false;
@@ -1001,7 +1006,7 @@ bool next_step() {
 
     remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
                          kf_frames);
-    optimize();
+    // optimize();
 
     current_pose = cameras[fcidl].T_w_c;
 
