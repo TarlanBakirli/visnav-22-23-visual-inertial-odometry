@@ -376,13 +376,12 @@ void bundle_adjustment(const Corners& feature_corners,
 }
 
 // Run bundle adjustment to optimize cameras, points using frames and IMU
-void bundle_adjustment_with_IMU(const Corners& feature_corners,
-                                const BundleAdjustmentOptions& options,
-                                const std::set<FrameCamId>& fixed_cameras,
-                                Calibration& calib_cam, Cameras& cameras,
-                                Landmarks& landmarks, IMU_MEAS& imu_meas,
-                                FRAME_STATE& frame_states,
-                                std::set<FrameId> kf_frames) {
+void bundle_adjustment_with_IMU(
+    const Corners& feature_corners, const BundleAdjustmentOptions& options,
+    const std::set<FrameCamId>& fixed_cameras, Calibration& calib_cam,
+    Cameras& cameras, Landmarks& landmarks, IMU_MEAS& imu_meas,
+    FRAME_STATE& frame_states, std::set<FrameId> kf_frames,
+    std::set<FrameId> buffer_frames, std::vector<Timestamp> timestamps) {
   // , IMUs& imus
   ceres::Problem problem;
 
@@ -435,32 +434,34 @@ void bundle_adjustment_with_IMU(const Corners& feature_corners,
 
   // For IMU part:
   // Add residual block for IMU
-  for (const auto& kf_frame : kf_frames) {
-    problem.AddParameterBlock(frame_states[kf_frame].T_w_i.data(), 7,
+  for (const auto& buffer_frame : buffer_frames) {
+    size_t buffer_t_ns = timestamps[buffer_frame];
+    problem.AddParameterBlock(frame_states[buffer_t_ns].T_w_i.data(), 7,
                               new Sophus::test::LocalParameterizationSE3);
-    problem.AddParameterBlock(frame_states[kf_frame].vel_w_i.data(), 3);
-    if (kf_frame == *kf_frames.begin())
-      problem.SetParameterBlockConstant(frame_states[kf_frame].vel_w_i.data());
-    // problem.AddParameterBlock(frame_states[--kf_frame].T_w_i.data(), 7,
-    //                           new Sophus::test::LocalParameterizationSE3);
-    // problem.AddParameterBlock(frame_states[--kf_frame].vel_w_i.data(), 3);
+    problem.AddParameterBlock(frame_states[buffer_t_ns].vel_w_i.data(), 3);
+    if (buffer_frame == *buffer_frames.begin())
+      problem.SetParameterBlockConstant(
+          frame_states[buffer_t_ns].vel_w_i.data());
   }
+
   // Create ceres cost function
-  if (kf_frames.size() > 1) {
+  if (buffer_frames.size() > 1) {
     Eigen::Vector3d curr_bg = Eigen::Vector3d::Zero();
     Eigen::Vector3d curr_ba = Eigen::Vector3d::Zero();
 
-    for (auto kf_frame : kf_frames) {
+    for (auto buffer_frame : buffer_frames) {
+      size_t curr_t_ns = timestamps[buffer_frame];
+      size_t last_t_ns = timestamps[buffer_frame - 1];
       ceres::CostFunction* cost_function =
           new ceres::NumericDiffCostFunction<BundleAdjustmentIMUCostFunctor,
                                              ceres::CENTRAL, 9, 7, 7, 3, 3>(
-              new BundleAdjustmentIMUCostFunctor(imu_meas[kf_frame], curr_bg,
+              new BundleAdjustmentIMUCostFunctor(imu_meas[curr_t_ns], curr_bg,
                                                  curr_ba));
       problem.AddResidualBlock(cost_function, loss_function,
-                               frame_states[kf_frame].T_w_i.data(),
-                               frame_states[kf_frame++].T_w_i.data(),
-                               frame_states[kf_frame].vel_w_i.data(),
-                               frame_states[kf_frame++].vel_w_i.data());
+                               frame_states[last_t_ns].T_w_i.data(),
+                               frame_states[curr_t_ns].T_w_i.data(),
+                               frame_states[last_t_ns].vel_w_i.data(),
+                               frame_states[curr_t_ns].vel_w_i.data());
     }
   }
 

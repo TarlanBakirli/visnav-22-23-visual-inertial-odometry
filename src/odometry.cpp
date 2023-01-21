@@ -64,6 +64,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <visnav/serialization.h>
 #include <basalt/imu/imu_types.h>
+#include <visnav/vio_utils.h>
+// #include <basalt/utils/vio_estimator.cpp>
 
 using namespace visnav;
 using namespace basalt;
@@ -78,10 +80,12 @@ void draw_scene();
 void load_data(const std::string& path, const std::string& calib_path);
 void load_imu_data(const std::string& path);
 void load_gt_data_state(const std::string& path);
-void load_gt_data_pose(const std::string& path);
+// void load_gt_data_pose(const std::string& path);
 bool next_step();
 void optimize();
 void compute_projections();
+void alignButton();
+void evaluationButton();
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Constants
@@ -171,12 +175,23 @@ Sophus::SE3d T_w_i_init;
 IMU_MEAS imu_meas;
 FRAME_STATE frame_states;
 // int new_frame = 0;
-// std::set<FrameId> buffer_frames;
-// int max_num_buffers = 3;
+std::set<FrameId> buffer_frames;
+int max_num_buffers = 3;
 // FRAME_STATE keyframe_states;
 // basalt::IntegratedImuMeasurement<double> imu_meas_init(1403636579753555584,
 //                                                        Eigen::Vector3d::Zero(),
 //                                                        Eigen::Vector3d::Zero());
+
+// For camera - IMU sysem transfer
+Eigen::Matrix4d T_c_i;
+Sophus::SE3d T_gt_init;
+
+std::vector<int64_t> vio_t_ns;
+Eigen::aligned_vector<Eigen::Vector3d> vio_t_w_i;
+Eigen::aligned_vector<Sophus::SE3d> vio_T_w_i;
+
+std::vector<int64_t> gt_t_ns;
+Eigen::aligned_vector<Eigen::Vector3d> gt_t_w_i;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
@@ -255,6 +270,14 @@ using Button = pangolin::Var<std::function<void(void)>>;
 
 Button next_step_btn("ui.next_step", &next_step);
 
+// alignSVD button
+// pangolin::Var<bool> align_SVD("ui.align_se3", false, true);
+
+// using Button = pangolin::Var<std::function<void(void)>>;
+
+Button align_se3_btn("ui.align_se3", &alignButton);
+Button evaluation_btn("ui.evaluation", &evaluationButton);
+
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -283,11 +306,38 @@ int main(int argc, char** argv) {
   load_data(dataset_path, cam_calib);
   load_imu_data(dataset_path);
   load_gt_data_state(dataset_path);
-  load_gt_data_pose(dataset_path);
+  // load_gt_data_pose(dataset_path);
+
+  // for (size_t i = 0; i < gt_state_measurements.size(); i++) {
+  //   gt_t_ns.push_back(gt_state_timestamps[i]);
+  //   gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
+  // }
 
   // initialization
   initialize(current_frame, imu_measurements, calib_cam, timestamps, imu_meas,
              frame_states);
+  std::cout << "rotation matrix:\n"
+            << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
+  std::cout << "translation matrix:\n"
+            << calib_cam.T_i_c[0].translation() << std::endl;
+  std::cout << "before transformation"
+            << gt_state_measurements[1403636580838555648].pos << std::endl;
+  std::cout << "after transformation"
+            << calib_cam.T_i_c[0].rotationMatrix().inverse() *
+                       gt_state_measurements[1403636580838555648].pos -
+                   calib_cam.T_i_c[0].translation()
+            << std::endl;
+
+  std::cout << "delta gt_state"
+            << gt_state_measurements[1403636580838555648].pos << std::endl;
+
+  // T_gt_init.translation() = gt_state_measurements[1403636580838555648].pos;
+  // T_gt_init.rotationMatrix() =
+  //     gt_state_measurements[1403636580838555648].q.toRotationMatrix();
+
+  Sophus::SE3d SE3_qt(gt_state_measurements[1403636580838555648].q,
+                      gt_state_measurements[1403636580838555648].pos);
+  T_gt_init = SE3_qt;
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -418,6 +468,9 @@ int main(int argc, char** argv) {
       // nop
     }
   }
+
+  /// VIO Project
+  // evaluation();
 
   return 0;
 }
@@ -752,6 +805,20 @@ void draw_scene() {
     }
     glEnd();
   }
+  // render ground truth points
+  // glPointSize(3.0);
+  // glBegin(GL_POINTS);
+  // std::cout << "current_pose:\n" << current_pose.matrix() << std::endl;
+
+  // for (const auto& gt_state : gt_state_measurements) {
+  // glColor3ubv(color_old_points);
+  // std::cout << "gt_state.position: " << gt_state.second.pos <<
+  // std::endl;
+  // pangolin::glVertex(calib_cam.T_i_c[0].inverse() * T_gt_init.inverse() *
+  //                    gt_state.second.pos);
+  // current_pose *
+  // }
+  // glEnd();
 }
 
 // Load images, calibration, and features / matches if available
@@ -869,8 +936,8 @@ void load_gt_data_state(const std::string& dataset_path) {
 
     if (line.size() < 20 || line[0] == '#') continue;
 
-    std::string timestamp_str = line.substr(0, 19);
-    std::istringstream ss(timestamp_str);
+    // std::string timestamp_str = line.substr(0, 19);
+    std::istringstream ss(line);
 
     char tmp;
     Timestamp timestamp;
@@ -897,35 +964,6 @@ void load_gt_data_state(const std::string& dataset_path) {
             << std::endl;
 }
 
-void load_gt_data_pose(const std::string& dataset_path) {
-  const std::string timestams_path = dataset_path + "/leica0/data.csv";
-  std::ifstream f(timestams_path);
-
-  std::string line;
-  while (std::getline(f, line)) {
-    if (line.size() < 20 || line[0] == '#') continue;
-
-    std::stringstream ss(line);
-
-    char tmp;
-    uint64_t timestamp;
-    Eigen::Quaterniond q;
-    Eigen::Vector3d pos;
-
-    ss >> timestamp >> tmp >> pos[0] >> tmp >> pos[1] >> tmp >> pos[2] >> tmp >>
-        q.w() >> tmp >> q.x() >> tmp >> q.y() >> tmp >> q.z();
-
-    gt_pose_timestamps.push_back(timestamp);
-
-    GT_Pose gt_pose;
-    gt_pose.pos = pos;
-    gt_pose.q = q;
-    gt_pose_measurements[timestamp] = gt_pose;
-  }
-  std::cerr << "Loaded " << gt_pose_measurements.size() << " GT poses"
-            << std::endl;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 /// Here the algorithmically interesting implementation begins
 ///////////////////////////////////////////////////////////////////////////////
@@ -934,11 +972,12 @@ void load_gt_data_pose(const std::string& dataset_path) {
 // until it returns false for automatic execution.
 bool next_step() {
   // std::cout << "FrameId of new frame: " << new_frame << std::endl;
-  // buffer_frames.emplace(new_frame);
-  // if (buffer_frames.size() > size_t(max_num_buffers))
-  //   buffer_frames.erase(buffer_frames.begin());
+  buffer_frames.emplace(current_frame);  // default: new_frame
+  if (buffer_frames.size() > size_t(max_num_buffers))
+    buffer_frames.erase(buffer_frames.begin());
 
   // current_frame = *buffer_frames.rbegin();
+
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
 
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
@@ -946,7 +985,7 @@ bool next_step() {
   // integrate for each current frame
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
-  Timestamp curr_t_ns, last_t_ns;
+  // Timestamp curr_t_ns, last_t_ns;
   // std::istringstream issc(images.at(fcidl));
   // issc >> curr_t_ns;
   if (current_frame > 0) {
@@ -955,8 +994,9 @@ bool next_step() {
 
     integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
                   imu_meas, frame_states);
-    // std::cout << "frame_states.size() " << frame_states.size() << std::endl;
-    // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
+    // std::cout << "frame_states.size() " << frame_states.size() <<
+    // std::endl; std::cout << "integrated value " <<
+    // imu_meas.get_d_state_d_ba()
     //           << std::endl;
     std::cout << "imu_meas.size(): " << imu_meas.size() << std::endl;
     std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
@@ -1027,10 +1067,10 @@ bool next_step() {
     add_new_landmarks(fcidl, fcidr, kdl, kdr, calib_cam, md_stereo, md,
                       landmarks, next_landmark_id);
 
-    // remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks,
-    // old_landmarks, kf_frames);
-    remove_old_keyframes_with_IMU(fcidl, max_num_kfs, cameras, landmarks,
-                                  old_landmarks, kf_frames);
+    remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
+                         kf_frames);
+    // remove_old_keyframes_with_IMU(fcidl, max_num_kfs, cameras, landmarks,
+    //                               old_landmarks, kf_frames);
     optimize();
 
     current_pose = cameras[fcidl].T_w_c;
@@ -1160,9 +1200,10 @@ void optimize() {
             << landmarks.size() << " points and " << num_obs << " observations."
             << std::endl;
 
-  // Fix oldest two cameras to fix SE3 and scale gauge. Making the whole second
-  // camera constant is a bit suboptimal, since we only need 1 DoF, but it's
-  // simple and the initial poses should be good from calibration.
+  // Fix oldest two cameras to fix SE3 and scale gauge. Making the whole
+  // second camera constant is a bit suboptimal, since we only need 1 DoF,
+  // but it's simple and the initial poses should be good from
+  // calibration.
   FrameId fid = *(kf_frames.begin());
   // std::cout << "fid " << fid << std::endl;
   // std::cout << "kf_frames " << kf_frames.size() << std::endl;
@@ -1188,11 +1229,13 @@ void optimize() {
 
   opt_thread.reset(new std::thread([fid, ba_options] {
     std::set<FrameCamId> fixed_cameras = {{fid, 0}, {fid, 1}};
-
-    // bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
-    //                            calib_cam_opt, cameras_opt, landmarks_opt,
-    //                            imu_meas, frame_states, kf_frames);  //,
-    //                            imus_opt
+    bundle_adjustment(feature_corners, ba_options, fixed_cameras, calib_cam_opt,
+                      cameras_opt, landmarks_opt);
+    // bundle_adjustment_with_IMU(feature_corners, ba_options,
+    // fixed_cameras,
+    //                            calib_cam_opt, cameras_opt,
+    //                            landmarks_opt, imu_meas, frame_states,
+    //                            kf_frames, buffer_frames, timestamps);
 
     opt_finished = true;
     opt_running = false;
@@ -1200,4 +1243,28 @@ void optimize() {
 
   // Update project info cache
   compute_projections();
+}
+
+///// VIO Project
+void alignButton() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
+
+void evaluationButton() {
+  vio_t_ns.clear();
+  vio_t_w_i.clear();
+  vio_T_w_i.clear();
+  gt_t_ns.clear();
+  gt_t_w_i.clear();
+  for (const auto frame_state : frame_states) {
+    vio_t_ns.push_back(frame_state.first);
+    vio_t_w_i.push_back(frame_state.second.T_w_i.translation());
+    vio_T_w_i.push_back(frame_state.second.T_w_i);
+  }
+
+  for (size_t i = 0; i < gt_state_timestamps.size(); i++) {
+    gt_t_ns.push_back(gt_state_timestamps[i]);
+    gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
+  }
+
+  const double ate_rmse = alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i);
+  std::cout << "ate_rmse: " << ate_rmse << std::endl;
 }

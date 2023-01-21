@@ -238,9 +238,9 @@ using IMU_MEAS = std::map<
 
 /// collection {frameId => PoseVelBiasState} for all PoseVelBiasState in the map
 using FRAME_STATE =
-    std::map<Timestamp, basalt::PoseVelBiasState<double>, std::less<Timestamp>,
+    std::map<Timestamp, basalt::PoseVelState<double>, std::less<Timestamp>,
              Eigen::aligned_allocator<
-                 std::pair<const Timestamp, basalt::PoseVelBiasState<double>>>>;
+                 std::pair<const Timestamp, basalt::PoseVelState<double>>>>;
 
 /// collection {trackId => Landmark} for all landmarks in the map.
 /// trackIds correspond to feature_tracks

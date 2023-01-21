@@ -326,14 +326,6 @@ void initialize(int current_frame,
 
   auto data = imu_measurements.begin();
 
-  using Vec3 = Eigen::Matrix<double, 3, 1>;
-  Eigen::Matrix<double, 3, 1> vel_w_i_init;
-  vel_w_i_init.setZero();  // for a few frames at the beginning, velocity is 0
-
-  Sophus::SE3d T_w_i_init;
-  T_w_i_init.setQuaternion(
-      Eigen::Quaternion<double>::FromTwoVectors(data->accel, Vec3::UnitZ()));
-
   Eigen::Vector3d bg = Eigen::Vector3d::Zero();
   Eigen::Vector3d ba = Eigen::Vector3d::Zero();
 
@@ -342,6 +334,14 @@ void initialize(int current_frame,
     data->gyro = calib_cam.calib_gyro_bias.getCalibrated(data->gyro);
     data++;
   }
+
+  using Vec3 = Eigen::Matrix<double, 3, 1>;
+  Eigen::Matrix<double, 3, 1> vel_w_i_init;
+  vel_w_i_init.setZero();  // for a few frames at the beginning, velocity is 0
+
+  Sophus::SE3d T_w_i_init;
+  T_w_i_init.setQuaternion(
+      Eigen::Quaternion<double>::FromTwoVectors(data->accel, Vec3::UnitZ()));
   // frame_states[0].t_ns = timestamps.front();
 
   // std::cout << "timestamp of frame_states[0]: " << frame_states[0].t_ns
@@ -351,8 +351,8 @@ void initialize(int current_frame,
   last_state_t_ns = timestamps[current_frame];
   imu_meas[last_state_t_ns] =
       basalt::IntegratedImuMeasurement<double>(last_state_t_ns, bg, ba);
-  frame_states[last_state_t_ns] = basalt::PoseVelBiasState<double>(
-      last_state_t_ns, T_w_i_init, vel_w_i_init, bg, ba);
+  frame_states[last_state_t_ns] =
+      basalt::PoseVelState<double>(last_state_t_ns, T_w_i_init, vel_w_i_init);
 
   std::cout << "Initialization Finished ..." << std::endl;
   std::cout << "frame_states[last_state_t_ns].t_ns "
@@ -376,7 +376,7 @@ void integrate_imu(int current_frame, std::vector<Timestamp> timestamps,
   std::cout << "vel_w_i for last state:\n" << last_state.vel_w_i << std::endl;
   basalt::IntegratedImuMeasurement<double>::Ptr meas;
   meas.reset(new basalt::IntegratedImuMeasurement<double>(
-      last_state_t_ns, last_state.bias_gyro, last_state.bias_accel));
+      last_state_t_ns, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero()));
   // reset is successful (have proved)
 
   static const double accel_std_dev = 0.23;
@@ -399,15 +399,14 @@ void integrate_imu(int current_frame, std::vector<Timestamp> timestamps,
   }
   // Yes, it is integrated.
 
-  basalt::PoseVelBiasState<double> next_state =
-      frame_states.at(last_state_t_ns);
+  basalt::PoseVelState<double> next_state = frame_states.at(last_state_t_ns);
 
   meas->predictState(frame_states.at(last_state_t_ns), G, next_state);
 
   last_state_t_ns = timestamps[current_frame];
   next_state.t_ns = timestamps[current_frame];
 
-  frame_states[last_state_t_ns] = basalt::PoseVelBiasState<double>(next_state);
+  frame_states[last_state_t_ns] = basalt::PoseVelState<double>(next_state);
   // imu_meas[meas->get_start_t_ns()] = *meas;
   imu_meas[last_state_t_ns] = *meas;
   std::cout << "last_state_t_ns: " << last_state_t_ns << std::endl;
