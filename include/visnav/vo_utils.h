@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <set>
 
 #include <visnav/common_types.h>
+#include <visnav/imu_types.h>
 
 #include <visnav/calibration.h>
 
@@ -288,8 +289,7 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
 void integrate_imu(const Calibration& calib_cam,
                    std::vector<basalt::ImuData<double>>& imu_measurements,
                    std::vector<Timestamp>& timestamps,
-                   FRAME_STATE& frame_states,
-                   IMU_MEAS& imu_meas_map, int current_frame) {
+                   FRAME_STATE& frame_states, int current_frame) {
   // static const double accel_std_dev = 0.23;
   // static const double gyro_std_dev = 0.0027;
   typename basalt::IntegratedImuMeasurement<double>::Ptr meas;
@@ -300,6 +300,8 @@ void integrate_imu(const Calibration& calib_cam,
   // gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
   accel_cov.setConstant(0);
   gyro_cov.setConstant(0);
+
+  std::cout << "current_frame is " << current_frame << std::endl;
 
   Timestamp curr_t_ns, last_t_ns;
   curr_t_ns = timestamps[current_frame];
@@ -325,41 +327,39 @@ void integrate_imu(const Calibration& calib_cam,
       //           << meas->getDeltaState().T_w_i.so3().matrix() << std::endl;
 
       std::cout << "-------Starting here-------" << std::endl;
-      std::cout << "Calibr accel:\n" << imudata.accel << std::endl;
-      std::cout << "Calibr gyro:\n" << imudata.gyro << std::endl;
 
       meas->integrate(imudata, accel_cov, gyro_cov);
 
       // check what is delta_state_ after calling integrate
-      std::cout << "data timestamp: " << imudata.t_ns << std::endl;
-      std::cout << "after delta state velocity "
-                << meas->getDeltaState().vel_w_i << std::endl;
-      std::cout << "after delta state T_w_i matrix "
-                << meas->getDeltaState().T_w_i.so3().matrix() << std::endl;
+      // std::cout << "data timestamp: " << imudata.t_ns << std::endl;
+      // std::cout << "after delta state velocity "
+      //           << meas->getDeltaState().vel_w_i << std::endl;
+      // std::cout << "after delta state T_w_i matrix "
+      //           << meas->getDeltaState().T_w_i.so3().matrix() << std::endl;
       std::cout << "-------Ending here-------" << std::endl;
     }
   }
   // FRAME_STATE frame_states;
-  std::cout << "prev_frame velocity before predictState:\n"
-            << frame_states[current_frame - 1].vel_w_i << std::endl;
-  std::cout << "curr_frame velocity before predictState:\n"
-            << frame_states[current_frame].vel_w_i << std::endl;
-  meas->predictState(frame_states[current_frame - 1], G,
-                     frame_states[current_frame]);
+  // std::cout << "prev_frame velocity before predictState:\n"
+  //           << frame_states[current_frame - 1].getState().vel_w_i << std::endl;
+  // std::cout << "curr_frame velocity before predictState:\n"
+  //           << frame_states[current_frame].getState().vel_w_i << std::endl;
 
-  std::cout << "get start time " << meas->get_start_t_ns() << std::endl;
+  basalt::PoseVelBiasState<double> state1 = frame_states[current_frame-1];
+  meas->predictState(frame_states[current_frame - 1], G, state1);
 
-  // frame_states[current] = basalt::PoseVelBiasStateWithLin<Scalar>(next_state);
-  imu_meas_map[current_frame-1] = *meas;
+  // std::cout << "get start time " << meas->get_start_t_ns() << std::endl;
+
+  frame_states[current_frame] = state1;
+
+  std::cout << "after setting:\n" << frame_states[current_frame].bias_accel << std::endl;
 
   // std::cout << "integrated rotation "
-  //           << frame_states[current_frame].T_w_i.so3().matrix() << std::endl;
-  // std::cout << "integrated translation "
-  //           << frame_states[current_frame].T_w_i.translation() << std::endl;
+  //           << frame_states[current_frame].getState().T_w_i.so3().matrix() << std::endl;
+  std::cout << "integrated translation "
+            << frame_states[current_frame].T_w_i.translation() << std::endl;
   std::cout << "integrated velocity " << frame_states[current_frame].vel_w_i
             << std::endl;
-  // std::cout << "frame_state_t_ns " << frame_states[current_frame].t_ns <<
-  // std::endl;
   std::cout << "------------------------------" << std::endl;
 }
 
@@ -413,7 +413,7 @@ void initialize(std::vector<basalt::ImuData<double>> imu_measurements,
                                                               imu_measurements[1].accel);
   // FRAME_STATE frame_states;
   frame_states[0] = basalt::PoseVelBiasState<double>(
-      last_state_t_ns, T_w_i_init, vel_w_i_init, bg, ba);
+      last_state_t_ns, T_w_i_init, vel_w_i_init, imu_measurements[1].gyro, imu_measurements[1].accel);
 
   std::cout << "Initialization Finished ..." << std::endl;
 }

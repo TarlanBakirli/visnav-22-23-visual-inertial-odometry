@@ -938,7 +938,7 @@ bool next_step() {
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   if (current_frame > 0) {
-    integrate_imu(calib_cam, imu_measurements, timestamps, frame_states, imu_meas_map, current_frame);
+    integrate_imu(calib_cam, imu_measurements, timestamps, frame_states, current_frame);
   }
 
   if (take_keyframe) {
