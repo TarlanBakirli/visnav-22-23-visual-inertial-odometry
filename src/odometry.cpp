@@ -175,7 +175,7 @@ Sophus::SE3d T_w_i_init;
 IMU_MEAS imu_meas;
 FRAME_STATE frame_states;
 // int new_frame = 0;
-std::set<FrameId> buffer_frames;
+// std::set<FrameId> buffer_frames;
 int max_num_buffers = 3;
 // FRAME_STATE keyframe_states;
 // basalt::IntegratedImuMeasurement<double> imu_meas_init(1403636579753555584,
@@ -204,6 +204,11 @@ Eigen::aligned_vector<Eigen::Vector3d> gt_t_w_i;
 pangolin::Var<bool> ui_show_hidden("ui.show_extra_options", false, true);
 
 //////////////////////////////////////////////
+/// For VIO Project:
+
+pangolin::DataLog imu_data_log, vio_data_log, error_data_log;
+pangolin::Plotter* plotter;
+
 /// Image display options
 
 pangolin::Var<int> show_frame1("ui.show_frame1", 0, 0, 1500);
@@ -222,6 +227,13 @@ pangolin::Var<bool> show_epipolar("hidden.show_epipolar", false, true);
 pangolin::Var<bool> show_cameras3d("hidden.show_cameras", true, true);
 pangolin::Var<bool> show_points3d("hidden.show_points", true, true);
 pangolin::Var<bool> show_old_points3d("hidden.show_old_points3d", true, true);
+
+pangolin::Var<bool> show_est_pos("ui.show_est_pos", true, false, true);
+// pangolin::Var<bool> show_est_vel("ui.show_est_vel", false, false, true);
+// pangolin::Var<bool> show_est_bg("ui.show_est_bg", false, false, true);
+// pangolin::Var<bool> show_est_ba("ui.show_est_ba", false, false, true);
+
+pangolin::Var<bool> show_gt("ui.show_gt", true, false, true);
 
 //////////////////////////////////////////////
 /// Feature extraction and matching options
@@ -308,6 +320,8 @@ int main(int argc, char** argv) {
   load_gt_data_state(dataset_path);
   // load_gt_data_pose(dataset_path);
 
+  vio_data_log.Clear();
+
   // for (size_t i = 0; i < gt_state_measurements.size(); i++) {
   //   gt_t_ns.push_back(gt_state_timestamps[i]);
   //   gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
@@ -316,28 +330,38 @@ int main(int argc, char** argv) {
   // initialization
   initialize(current_frame, imu_measurements, calib_cam, timestamps, imu_meas,
              frame_states);
-  std::cout << "rotation matrix:\n"
-            << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
-  std::cout << "translation matrix:\n"
-            << calib_cam.T_i_c[0].translation() << std::endl;
-  std::cout << "before transformation"
-            << gt_state_measurements[1403636580838555648].pos << std::endl;
-  std::cout << "after transformation"
-            << calib_cam.T_i_c[0].rotationMatrix().inverse() *
-                       gt_state_measurements[1403636580838555648].pos -
-                   calib_cam.T_i_c[0].translation()
-            << std::endl;
+  // std::cout << "rotation matrix:\n"
+  //           << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
+  // std::cout << "translation matrix:\n"
+  //           << calib_cam.T_i_c[0].translation() << std::endl;
+  // std::cout << "before transformation"
+  //           << gt_state_measurements[1403636580838555648].pos << std::endl;
+  // std::cout << "after transformation"
+  //           << calib_cam.T_i_c[0].rotationMatrix().inverse() *
+  //                      gt_state_measurements[1403636580838555648].pos -
+  //                  calib_cam.T_i_c[0].translation()
+  //           << std::endl;
 
-  std::cout << "delta gt_state"
-            << gt_state_measurements[1403636580838555648].pos << std::endl;
+  // std::cout << "delta gt_state"
+  //           << gt_state_measurements[1403636580838555648].pos << std::endl;
 
   // T_gt_init.translation() = gt_state_measurements[1403636580838555648].pos;
   // T_gt_init.rotationMatrix() =
   //     gt_state_measurements[1403636580838555648].q.toRotationMatrix();
 
-  Sophus::SE3d SE3_qt(gt_state_measurements[1403636580838555648].q,
-                      gt_state_measurements[1403636580838555648].pos);
-  T_gt_init = SE3_qt;
+  // Sophus::SE3d SE3_qt(gt_state_measurements[1403636580838555648].q,
+  //                     gt_state_measurements[1403636580838555648].pos);
+  // T_gt_init = SE3_qt;
+
+  {
+    gt_t_ns.clear();
+    gt_t_w_i.clear();
+
+    for (size_t i = 0; i < gt_state_timestamps.size(); i++) {
+      gt_t_ns.push_back(gt_state_timestamps[i]);
+      gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
+    }
+  }
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -805,20 +829,10 @@ void draw_scene() {
     }
     glEnd();
   }
-  // render ground truth points
-  // glPointSize(3.0);
-  // glBegin(GL_POINTS);
-  // std::cout << "current_pose:\n" << current_pose.matrix() << std::endl;
 
-  // for (const auto& gt_state : gt_state_measurements) {
-  // glColor3ubv(color_old_points);
-  // std::cout << "gt_state.position: " << gt_state.second.pos <<
-  // std::endl;
-  // pangolin::glVertex(calib_cam.T_i_c[0].inverse() * T_gt_init.inverse() *
-  //                    gt_state.second.pos);
-  // current_pose *
-  // }
-  // glEnd();
+  /// For VIO project: render ground truth trajectory
+  glColor3ubv(color_old_points);
+  if (show_gt) pangolin::glDrawLineStrip(gt_t_w_i);
 }
 
 // Load images, calibration, and features / matches if available
@@ -972,9 +986,9 @@ void load_gt_data_state(const std::string& dataset_path) {
 // until it returns false for automatic execution.
 bool next_step() {
   // std::cout << "FrameId of new frame: " << new_frame << std::endl;
-  buffer_frames.emplace(current_frame);  // default: new_frame
-  if (buffer_frames.size() > size_t(max_num_buffers))
-    buffer_frames.erase(buffer_frames.begin());
+  // buffer_frames.emplace(current_frame);  // default: new_frame
+  // if (buffer_frames.size() > size_t(max_num_buffers))
+  //   buffer_frames.erase(buffer_frames.begin());
 
   // current_frame = *buffer_frames.rbegin();
 
@@ -988,21 +1002,22 @@ bool next_step() {
   // Timestamp curr_t_ns, last_t_ns;
   // std::istringstream issc(images.at(fcidl));
   // issc >> curr_t_ns;
-  if (current_frame > 0) {
-    // curr_t_ns = timestamps[current_frame];
-    // last_t_ns = timestamps[current_frame - 1];
+  // if (current_frame > 0) {
+  // curr_t_ns = timestamps[current_frame];
+  // last_t_ns = timestamps[current_frame - 1];
 
-    integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
-                  imu_meas, frame_states);
-    // std::cout << "frame_states.size() " << frame_states.size() <<
-    // std::endl; std::cout << "integrated value " <<
-    // imu_meas.get_d_state_d_ba()
-    //           << std::endl;
-    std::cout << "imu_meas.size(): " << imu_meas.size() << std::endl;
-    std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
-    // std::cout << "imu_meas.[current_frame]:"
-    //           << imu_meas[current_frame - 1].get_dt_ns() << std::endl;
-  }
+  // integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
+  //               imu_meas, frame_states);
+
+  // std::cout << "frame_states.size() " << frame_states.size() <<
+  // std::endl; std::cout << "integrated value " <<
+  // imu_meas.get_d_state_d_ba()
+  //           << std::endl;
+  // std::cout << "imu_meas.size(): " << imu_meas.size() << std::endl;
+  // std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
+  // std::cout << "imu_meas.[current_frame]:"
+  //           << imu_meas[current_frame - 1].get_dt_ns() << std::endl;
+  // }
 
   if (take_keyframe) {
     take_keyframe = false;
@@ -1075,6 +1090,10 @@ bool next_step() {
 
     current_pose = cameras[fcidl].T_w_c;
 
+    /// For VIO Project:
+    frame_states[timestamps[current_frame]].T_w_i = current_pose;
+    /// End
+
     // update image views
     change_display_to_image(fcidl);
     change_display_to_image(fcidr);
@@ -1115,6 +1134,10 @@ bool next_step() {
                     reprojection_error_pnp_inlier_threshold_pixel, md);
 
     current_pose = md.T_w_c;
+
+    /// For VIO Project:
+    frame_states[timestamps[current_frame]].T_w_i = current_pose;
+    /// End
 
     if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
         !opt_finished) {
@@ -1246,25 +1269,95 @@ void optimize() {
 }
 
 ///// VIO Project
+
+void draw_plots() {
+  plotter->ClearSeries();
+  plotter->ClearMarkers();
+
+  if (show_est_pos) {
+    plotter->AddSeries("$0", "$4", pangolin::DrawingModeLine,
+                       pangolin::Colour::Red(), "position x", &vio_data_log);
+    plotter->AddSeries("$0", "$5", pangolin::DrawingModeLine,
+                       pangolin::Colour::Green(), "position y", &vio_data_log);
+    plotter->AddSeries("$0", "$6", pangolin::DrawingModeLine,
+                       pangolin::Colour::Blue(), "position z", &vio_data_log);
+  }
+
+  // if (show_est_vel) {
+  //   plotter->AddSeries("$0", "$1", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Red(), "velocity x", &vio_data_log);
+  //   plotter->AddSeries("$0", "$2", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Green(), "velocity y",
+  //                      &vio_data_log);
+  //   plotter->AddSeries("$0", "$3", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Blue(), "velocity z",
+  //                      &vio_data_log);
+  // }
+
+  // if (show_est_bg) {
+  //   plotter->AddSeries("$0", "$7", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Red(), "gyro bias x",
+  //                      &vio_data_log);
+  //   plotter->AddSeries("$0", "$8", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Green(), "gyro bias y",
+  //                      &vio_data_log);
+  //   plotter->AddSeries("$0", "$9", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Blue(), "gyro bias z",
+  //                      &vio_data_log);
+  // }
+
+  // if (show_est_ba) {
+  //   plotter->AddSeries("$0", "$10", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Red(), "accel bias x",
+  //                      &vio_data_log);
+  //   plotter->AddSeries("$0", "$11", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Green(), "accel bias y",
+  //                      &vio_data_log);
+  //   plotter->AddSeries("$0", "$12", pangolin::DrawingModeLine,
+  //                      pangolin::Colour::Blue(), "accel bias z",
+  //                      &vio_data_log);
+  // }
+
+  // double t = vio_dataset->get_image_timestamps()[show_frame1] * 1e-9;
+  double t = timestamps[show_frame1] * 1e-9;
+  plotter->AddMarker(pangolin::Marker::Vertical, t, pangolin::Marker::Equal,
+                     pangolin::Colour::White());
+}
+
 void alignButton() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
 
 void evaluationButton() {
   vio_t_ns.clear();
   vio_t_w_i.clear();
   vio_T_w_i.clear();
-  gt_t_ns.clear();
-  gt_t_w_i.clear();
-  for (const auto frame_state : frame_states) {
-    vio_t_ns.push_back(frame_state.first);
-    vio_t_w_i.push_back(frame_state.second.T_w_i.translation());
-    vio_T_w_i.push_back(frame_state.second.T_w_i);
-  }
 
-  for (size_t i = 0; i < gt_state_timestamps.size(); i++) {
-    gt_t_ns.push_back(gt_state_timestamps[i]);
-    gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
+  int64_t start_t_ns = timestamps[0];
+
+  for (const auto& frame_state : frame_states) {
+    int64_t t_ns = frame_state.first;
+
+    Sophus::SE3d T_w_i = frame_state.second.T_w_i;
+    Eigen::Vector3d vel_w_i = frame_state.second.vel_w_i;
+    // Eigen::Vector3d bg = frame_state.second.bias_gyro;
+    // Eigen::Vector3d ba = frame_state.second.bias_accel;
+
+    vio_t_ns.push_back(frame_state.first);
+    vio_t_w_i.push_back(T_w_i.translation());
+    vio_T_w_i.push_back(T_w_i);
+
+    // if (show_gui) {
+    std::vector<float> vals;
+    vals.push_back((t_ns - start_t_ns) * 1e-9);
+
+    for (int i = 0; i < 3; i++) vals.push_back(vel_w_i[i]);
+    for (int i = 0; i < 3; i++) vals.push_back(T_w_i.translation()[i]);
+    // for (int i = 0; i < 3; i++) vals.push_back(bg[i]);
+    // for (int i = 0; i < 3; i++) vals.push_back(ba[i]);
+
+    vio_data_log.Log(vals);
+    // }
   }
 
   const double ate_rmse = alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i);
-  std::cout << "ate_rmse: " << ate_rmse << std::endl;
+  // std::cout << "ate_rmse: " << ate_rmse << std::endl;
 }
