@@ -84,7 +84,6 @@ void load_gt_data_state(const std::string& path);
 bool next_step();
 void optimize();
 void compute_projections();
-void alignButton();
 void evaluationButton();
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -250,7 +249,7 @@ pangolin::Var<double> match_max_dist_2d("hidden.match_max_dist_2d", 20.0, 1.0,
 
 pangolin::Var<int> new_kf_min_inliers("hidden.new_kf_min_inliers", 80, 1, 200);
 
-pangolin::Var<int> max_num_kfs("hidden.max_num_kfs", 7, 5,
+pangolin::Var<int> max_num_kfs("hidden.max_num_kfs", 10, 5,
                                20);  // default: 10, change for VIO
 
 pangolin::Var<double> cam_z_threshold("hidden.cam_z_threshold", 0.1, 1.0, 0.0);
@@ -283,11 +282,7 @@ using Button = pangolin::Var<std::function<void(void)>>;
 Button next_step_btn("ui.next_step", &next_step);
 
 // alignSVD button
-// pangolin::Var<bool> align_SVD("ui.align_se3", false, true);
 
-// using Button = pangolin::Var<std::function<void(void)>>;
-
-Button align_se3_btn("ui.align_se3", &alignButton);
 Button evaluation_btn("ui.evaluation", &evaluationButton);
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -320,16 +315,15 @@ int main(int argc, char** argv) {
   load_gt_data_state(dataset_path);
   // load_gt_data_pose(dataset_path);
 
-  vio_data_log.Clear();
-
   // for (size_t i = 0; i < gt_state_measurements.size(); i++) {
   //   gt_t_ns.push_back(gt_state_timestamps[i]);
   //   gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
   // }
 
   // initialization
-  initialize(current_frame, imu_measurements, calib_cam, timestamps, imu_meas,
-             frame_states);
+  // initialize(current_frame, imu_measurements, calib_cam, timestamps,
+  // imu_meas,
+  //            frame_states);
   // std::cout << "rotation matrix:\n"
   //           << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
   // std::cout << "translation matrix:\n"
@@ -353,6 +347,7 @@ int main(int argc, char** argv) {
   //                     gt_state_measurements[1403636580838555648].pos);
   // T_gt_init = SE3_qt;
 
+  /// For VIO Project: save grount truth pose
   {
     gt_t_ns.clear();
     gt_t_w_i.clear();
@@ -378,6 +373,15 @@ int main(int argc, char** argv) {
     pangolin::View& img_view_display =
         pangolin::Display("images").SetLayout(pangolin::LayoutEqual);
     main_view.AddDisplay(img_view_display);
+
+    /// For VIO Project
+    // pangolin::View& plot_display = pangolin::CreateDisplay().SetBounds(
+    //     0.0, 0.4, pangolin::Attach::Pix(UI_WIDTH), 1.0);
+    // plotter = new pangolin::Plotter(&imu_data_log, 0.0, 100, -10.0, 10.0,
+    // 0.01f,
+    //                                 0.01f);
+    // plot_display.AddDisplay(*plotter);
+    /// End
 
     // main ui panel
     pangolin::CreatePanel("ui").SetBounds(0.0, 1.0, 0.0,
@@ -830,9 +834,19 @@ void draw_scene() {
     glEnd();
   }
 
-  /// For VIO project: render ground truth trajectory
-  glColor3ubv(color_old_points);
+  /// For VIO project: render estimated trajectory
+
+  glColor3ubv(color_selected_left);
+  if (!vio_t_w_i.empty()) {
+    size_t end = std::min(vio_t_w_i.size(), size_t(show_frame1 + 1));
+    Eigen::aligned_vector<Eigen::Vector3d> sub_gt(vio_t_w_i.begin(),
+                                                  vio_t_w_i.begin() + end);
+    pangolin::glDrawLineStrip(sub_gt);
+  }
+  // render ground truth trajectory
+  glColor3ubv(color_camera_current);
   if (show_gt) pangolin::glDrawLineStrip(gt_t_w_i);
+  /// End
 }
 
 // Load images, calibration, and features / matches if available
@@ -997,7 +1011,6 @@ bool next_step() {
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
 
   // integrate for each current frame
-  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   // Timestamp curr_t_ns, last_t_ns;
   // std::istringstream issc(images.at(fcidl));
@@ -1018,6 +1031,8 @@ bool next_step() {
   // std::cout << "imu_meas.[current_frame]:"
   //           << imu_meas[current_frame - 1].get_dt_ns() << std::endl;
   // }
+
+  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   if (take_keyframe) {
     take_keyframe = false;
@@ -1091,7 +1106,9 @@ bool next_step() {
     current_pose = cameras[fcidl].T_w_c;
 
     /// For VIO Project:
-    frame_states[timestamps[current_frame]].T_w_i = current_pose;
+    vio_t_ns.push_back(timestamps[current_frame]);
+    vio_t_w_i.push_back(current_pose.translation());
+    vio_T_w_i.push_back(current_pose);
     /// End
 
     // update image views
@@ -1136,7 +1153,9 @@ bool next_step() {
     current_pose = md.T_w_c;
 
     /// For VIO Project:
-    frame_states[timestamps[current_frame]].T_w_i = current_pose;
+    vio_t_ns.push_back(timestamps[current_frame]);
+    vio_t_w_i.push_back(current_pose.translation());
+    vio_T_w_i.push_back(current_pose);
     /// End
 
     if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
@@ -1270,94 +1289,4 @@ void optimize() {
 
 ///// VIO Project
 
-void draw_plots() {
-  plotter->ClearSeries();
-  plotter->ClearMarkers();
-
-  if (show_est_pos) {
-    plotter->AddSeries("$0", "$4", pangolin::DrawingModeLine,
-                       pangolin::Colour::Red(), "position x", &vio_data_log);
-    plotter->AddSeries("$0", "$5", pangolin::DrawingModeLine,
-                       pangolin::Colour::Green(), "position y", &vio_data_log);
-    plotter->AddSeries("$0", "$6", pangolin::DrawingModeLine,
-                       pangolin::Colour::Blue(), "position z", &vio_data_log);
-  }
-
-  // if (show_est_vel) {
-  //   plotter->AddSeries("$0", "$1", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Red(), "velocity x", &vio_data_log);
-  //   plotter->AddSeries("$0", "$2", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Green(), "velocity y",
-  //                      &vio_data_log);
-  //   plotter->AddSeries("$0", "$3", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Blue(), "velocity z",
-  //                      &vio_data_log);
-  // }
-
-  // if (show_est_bg) {
-  //   plotter->AddSeries("$0", "$7", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Red(), "gyro bias x",
-  //                      &vio_data_log);
-  //   plotter->AddSeries("$0", "$8", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Green(), "gyro bias y",
-  //                      &vio_data_log);
-  //   plotter->AddSeries("$0", "$9", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Blue(), "gyro bias z",
-  //                      &vio_data_log);
-  // }
-
-  // if (show_est_ba) {
-  //   plotter->AddSeries("$0", "$10", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Red(), "accel bias x",
-  //                      &vio_data_log);
-  //   plotter->AddSeries("$0", "$11", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Green(), "accel bias y",
-  //                      &vio_data_log);
-  //   plotter->AddSeries("$0", "$12", pangolin::DrawingModeLine,
-  //                      pangolin::Colour::Blue(), "accel bias z",
-  //                      &vio_data_log);
-  // }
-
-  // double t = vio_dataset->get_image_timestamps()[show_frame1] * 1e-9;
-  double t = timestamps[show_frame1] * 1e-9;
-  plotter->AddMarker(pangolin::Marker::Vertical, t, pangolin::Marker::Equal,
-                     pangolin::Colour::White());
-}
-
-void alignButton() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
-
-void evaluationButton() {
-  vio_t_ns.clear();
-  vio_t_w_i.clear();
-  vio_T_w_i.clear();
-
-  int64_t start_t_ns = timestamps[0];
-
-  for (const auto& frame_state : frame_states) {
-    int64_t t_ns = frame_state.first;
-
-    Sophus::SE3d T_w_i = frame_state.second.T_w_i;
-    Eigen::Vector3d vel_w_i = frame_state.second.vel_w_i;
-    // Eigen::Vector3d bg = frame_state.second.bias_gyro;
-    // Eigen::Vector3d ba = frame_state.second.bias_accel;
-
-    vio_t_ns.push_back(frame_state.first);
-    vio_t_w_i.push_back(T_w_i.translation());
-    vio_T_w_i.push_back(T_w_i);
-
-    // if (show_gui) {
-    std::vector<float> vals;
-    vals.push_back((t_ns - start_t_ns) * 1e-9);
-
-    for (int i = 0; i < 3; i++) vals.push_back(vel_w_i[i]);
-    for (int i = 0; i < 3; i++) vals.push_back(T_w_i.translation()[i]);
-    // for (int i = 0; i < 3; i++) vals.push_back(bg[i]);
-    // for (int i = 0; i < 3; i++) vals.push_back(ba[i]);
-
-    vio_data_log.Log(vals);
-    // }
-  }
-
-  const double ate_rmse = alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i);
-  // std::cout << "ate_rmse: " << ate_rmse << std::endl;
-}
+void evaluationButton() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
