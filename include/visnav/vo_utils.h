@@ -311,12 +311,6 @@ void remove_old_keyframes_with_IMU(const FrameCamId fcidl,
     for (const auto& track_id : track_ids) landmarks.erase(track_id);
     kf_frames.erase(kf_frames.begin());
   }
-  // FRAME_STATE frame_states;
-  imu_meas.predictState(frame_states[current_frame - 1], G,
-                        frame_states[current_frame]);
-
-  std::cout << "integrated translation "
-            << frame_states[current_frame].T_w_i.translation() << std::endl;
 }
 
 // initialize the ba and bg
@@ -343,10 +337,8 @@ void initialize(int current_frame,
   }
 
   // Need to calibrate imudata of timestamp which is equal to current_frame timestamp
-  (*data_iter).accel =
-        calib_cam.calib_accel_bias.getCalibrated((*data_iter).accel);
-    (*data_iter).gyro =
-        calib_cam.calib_gyro_bias.getCalibrated((*data_iter).gyro);
+  data->accel = calib_cam.calib_accel_bias.getCalibrated(data->accel);
+  data->gyro = calib_cam.calib_gyro_bias.getCalibrated(data->gyro);
 
   using Vec3 = Eigen::Matrix<double, 3, 1>;
   Eigen::Matrix<double, 3, 1> vel_w_i_init;

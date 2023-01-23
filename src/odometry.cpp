@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <Python.h>
 
 #include <sophus/se3.hpp>
 
@@ -84,7 +85,9 @@ void load_gt_data_state(const std::string& path);
 bool next_step();
 void optimize();
 void compute_projections();
-void evaluationButton();
+void evaluate_ate();
+void save_file_est();
+void evaluate_rpe();
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Constants
@@ -174,7 +177,7 @@ Sophus::SE3d T_w_i_init;
 IMU_MEAS imu_meas;
 FRAME_STATE frame_states;
 // int new_frame = 0;
-// std::set<FrameId> buffer_frames;
+std::set<FrameId> buffer_frames;
 int max_num_buffers = 3;
 // FRAME_STATE keyframe_states;
 // basalt::IntegratedImuMeasurement<double> imu_meas_init(1403636579753555584,
@@ -283,7 +286,9 @@ Button next_step_btn("ui.next_step", &next_step);
 
 // alignSVD button
 
-Button evaluation_btn("ui.evaluation", &evaluationButton);
+Button evaluate_ate_btn("ui.evaluate_ate", &evaluate_ate);
+Button save_trajectory_btn("ui.save_trajectory", &save_file_est);
+Button evaluate_rpe_btn("ui.evaluate_rpe", &evaluate_rpe);
 
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
@@ -321,9 +326,8 @@ int main(int argc, char** argv) {
   // }
 
   // initialization
-  // initialize(current_frame, imu_measurements, calib_cam, timestamps,
-  // imu_meas,
-  //            frame_states);
+  initialize(current_frame, imu_measurements, calib_cam, timestamps, imu_meas,
+             frame_states);
   // std::cout << "rotation matrix:\n"
   //           << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
   // std::cout << "translation matrix:\n"
@@ -496,9 +500,6 @@ int main(int argc, char** argv) {
       // nop
     }
   }
-
-  /// VIO Project
-  // evaluation();
 
   return 0;
 }
@@ -1000,37 +1001,21 @@ void load_gt_data_state(const std::string& dataset_path) {
 // until it returns false for automatic execution.
 bool next_step() {
   // std::cout << "FrameId of new frame: " << new_frame << std::endl;
-  // buffer_frames.emplace(current_frame);  // default: new_frame
-  // if (buffer_frames.size() > size_t(max_num_buffers))
-  //   buffer_frames.erase(buffer_frames.begin());
+  buffer_frames.emplace(current_frame);  // default: new_frame
+  if (buffer_frames.size() > size_t(max_num_buffers))
+    buffer_frames.erase(buffer_frames.begin());
 
-  // current_frame = *buffer_frames.rbegin();
+  current_frame = *buffer_frames.rbegin();
 
   if (current_frame >= int(images.size()) / NUM_CAMS) return false;
 
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
 
   // integrate for each current frame
-
-  // Timestamp curr_t_ns, last_t_ns;
-  // std::istringstream issc(images.at(fcidl));
-  // issc >> curr_t_ns;
-  // if (current_frame > 0) {
-  // curr_t_ns = timestamps[current_frame];
-  // last_t_ns = timestamps[current_frame - 1];
-
-  // integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
-  //               imu_meas, frame_states);
-
-  // std::cout << "frame_states.size() " << frame_states.size() <<
-  // std::endl; std::cout << "integrated value " <<
-  // imu_meas.get_d_state_d_ba()
-  //           << std::endl;
-  // std::cout << "imu_meas.size(): " << imu_meas.size() << std::endl;
-  // std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
-  // std::cout << "imu_meas.[current_frame]:"
-  //           << imu_meas[current_frame - 1].get_dt_ns() << std::endl;
-  // }
+  if (current_frame > 0) {
+    integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
+                  imu_meas, frame_states);
+  }
 
   FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
@@ -1271,13 +1256,13 @@ void optimize() {
 
   opt_thread.reset(new std::thread([fid, ba_options] {
     std::set<FrameCamId> fixed_cameras = {{fid, 0}, {fid, 1}};
-    bundle_adjustment(feature_corners, ba_options, fixed_cameras, calib_cam_opt,
-                      cameras_opt, landmarks_opt);
-    // bundle_adjustment_with_IMU(feature_corners, ba_options,
-    // fixed_cameras,
-    //                            calib_cam_opt, cameras_opt,
-    //                            landmarks_opt, imu_meas, frame_states,
-    //                            kf_frames, buffer_frames, timestamps);
+    // bundle_adjustment(feature_corners, ba_options, fixed_cameras,
+    // calib_cam_opt,
+    //                   cameras_opt, landmarks_opt);
+    bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
+                               calib_cam_opt, cameras_opt, landmarks_opt,
+                               imu_meas, frame_states, kf_frames, buffer_frames,
+                               timestamps);
 
     opt_finished = true;
     opt_running = false;
@@ -1289,4 +1274,48 @@ void optimize() {
 
 ///// VIO Project
 
-void evaluationButton() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
+void evaluate_ate() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
+
+void save_file_est() {
+  std::ofstream os("./estimated_pose.txt");
+
+  auto t_ns_iter = vio_t_ns.begin();
+  auto t_w_i_iter = vio_T_w_i.begin();
+
+  if (os.is_open()) {
+    // os << "#timestamp, t_x, t_y, t_z, q_x, q_y, q_z, q_w\n";
+    while (t_ns_iter != vio_t_ns.end()) {
+      Eigen::Quaterniond quat = Eigen::Quaterniond(t_w_i_iter->so3().matrix());
+      os << *t_ns_iter << ","
+          << t_w_i_iter->translation().x() << "," << t_w_i_iter->translation().y()<< ","
+          << t_w_i_iter->translation().z() << "," << quat.x() << ","
+          << quat.y() << "," << quat.z() << "," << quat.w() << "\n";
+      t_ns_iter++;
+      t_w_i_iter++;
+    }
+
+    std::cout << "Saved estimated pose in file" << std::endl;
+  }
+  os.close();
+}
+
+void evaluate_rpe() {
+
+  // g++ run_python_in_cpp.cpp -I /usr/include/python3.8 -lpython3.8 -o run_python_in_cpp
+
+  const char *filename = "./evaluate_rpe.py";
+	FILE* python_script = fopen(filename, "r");
+
+  int argc = 3;
+  char * argv[3];
+
+  argv[0] = (char*)"evaluate_rpe.py";
+  argv[1] = (char*)"gt_data.txt";
+  argv[2] = (char*)"estimated_pose.txt";
+
+	Py_Initialize();
+  PySys_SetArgv(argc, argv);
+	PyRun_SimpleFile(python_script, filename);
+	Py_Finalize();
+
+}

@@ -74,6 +74,7 @@ include_directories(thirdparty/cereal/include)
 include_directories(thirdparty/CLI11/include)
 include_directories(thirdparty/basalt-headers/include)
 include_directories(include)
+INCLUDE_DIRECTORIES(${Python3_INCLUDE_DIRS})
 
 # to use link to target "ceres"
 # Note: always link to ceres first, as otherwise a system-wide install might
@@ -106,6 +107,9 @@ if(OpenCV_VERSION VERSION_LESS 3)
   set_property(TARGET OpenCV PROPERTY INTERFACE_COMPILE_DEFINITIONS DBATK_OPENCV2)
 endif()
 
+# find_package(PythonInterp 3 REQUIRED)
+# find_package(PythonLibs 3 REQUIRED)
+find_package (Python3 COMPONENTS Interpreter Development)
 
 
 add_executable(test_ceres_se3 src/test_ceres_se3.cpp)
@@ -123,6 +127,8 @@ target_link_libraries(odometry Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 add_executable(test_ba src/test_ba.cpp)
 target_link_libraries(test_ba Ceres::ceres pangolin TBB::tbb OpenCV opengv)
 
+target_link_libraries(odometry ${Python3_LIBRARIES})
+target_include_directories(odometry PRIVATE ${Python3_INCLUDE_DIRS})
 
 enable_testing()
 add_subdirectory(test)
