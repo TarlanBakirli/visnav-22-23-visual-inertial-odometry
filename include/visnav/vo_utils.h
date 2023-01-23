@@ -286,81 +286,37 @@ void remove_old_keyframes(const FrameCamId fcidl, const int max_num_kfs,
   }
 }
 
-void integrate_imu(const Calibration& calib_cam,
-                   std::vector<basalt::ImuData<double>>& imu_measurements,
-                   std::vector<Timestamp>& timestamps,
-                   FRAME_STATE& frame_states, int current_frame) {
-  // static const double accel_std_dev = 0.23;
-  // static const double gyro_std_dev = 0.0027;
-  typename basalt::IntegratedImuMeasurement<double>::Ptr meas;
-  static const Eigen::Vector3d G(0, 0, -9.81);
+void remove_old_keyframes_with_IMU(const FrameCamId fcidl,
+                                   const int max_num_kfs, Cameras& cameras,
+                                   Landmarks& landmarks,
+                                   Landmarks& old_landmarks,
+                                   std::set<FrameId>& kf_frames) {
+  kf_frames.emplace(fcidl.frame_id);
 
-  Eigen::Vector3d accel_cov, gyro_cov;
-  // accel_cov.setConstant(accel_std_dev * accel_std_dev);
-  // gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
-  accel_cov.setConstant(0);
-  gyro_cov.setConstant(0);
-
-  std::cout << "current_frame is " << current_frame << std::endl;
-
-  Timestamp curr_t_ns, last_t_ns;
-  curr_t_ns = timestamps[current_frame];
-  last_t_ns = timestamps[current_frame - 1];
-  meas.reset(new basalt::IntegratedImuMeasurement<double>(
-      last_t_ns, frame_states[current_frame - 1].bias_gyro,
-      frame_states[current_frame - 1].bias_accel));
-
-  std::cout << "last_t_ns: " << last_t_ns << std::endl;
-  std::cout << "curr_t_ns: " << curr_t_ns << std::endl;
-
-  // replace these
-  for (auto& imudata : imu_measurements) {
-    if (imudata.t_ns > last_t_ns && imudata.t_ns <= curr_t_ns) {
-      imudata.accel = calib_cam.calib_accel_bias.getCalibrated(imudata.accel);
-      imudata.gyro = calib_cam.calib_gyro_bias.getCalibrated(imudata.gyro);
-
-      // check what is delta_state_ before calling integrate
-      // std::cout << "data timestamp: " << imudata.t_ns << std::endl;
-      // std::cout << "before delta state velocity "
-      //           << meas->getDeltaState().vel_w_i << std::endl;
-      // std::cout << "before delta state T_w_i matrix "
-      //           << meas->getDeltaState().T_w_i.so3().matrix() << std::endl;
-
-      std::cout << "-------Starting here-------" << std::endl;
-
-      meas->integrate(imudata, accel_cov, gyro_cov);
-
-      // check what is delta_state_ after calling integrate
-      // std::cout << "data timestamp: " << imudata.t_ns << std::endl;
-      // std::cout << "after delta state velocity "
-      //           << meas->getDeltaState().vel_w_i << std::endl;
-      // std::cout << "after delta state T_w_i matrix "
-      //           << meas->getDeltaState().T_w_i.so3().matrix() << std::endl;
-      std::cout << "-------Ending here-------" << std::endl;
+  while (kf_frames.size() > size_t(max_num_kfs)) {
+    FrameCamId old_fcidl = FrameCamId(*kf_frames.begin(), 0);
+    FrameCamId old_fcidr = FrameCamId(*kf_frames.begin(), 1);
+    cameras.erase(old_fcidl);
+    cameras.erase(old_fcidr);
+    std::vector<TrackId> track_ids;
+    for (auto& landmark : landmarks) {
+      landmark.second.obs.erase(old_fcidl);
+      landmark.second.obs.erase(old_fcidr);
+      if (landmark.second.obs.size() == 0) {
+        TrackId track_id = landmark.first;
+        old_landmarks[track_id] = landmarks[track_id];
+        track_ids.push_back(track_id);
+      }
     }
+    for (const auto& track_id : track_ids) landmarks.erase(track_id);
+    kf_frames.erase(kf_frames.begin());
   }
   // FRAME_STATE frame_states;
-  // std::cout << "prev_frame velocity before predictState:\n"
-  //           << frame_states[current_frame - 1].getState().vel_w_i << std::endl;
-  // std::cout << "curr_frame velocity before predictState:\n"
-  //           << frame_states[current_frame].getState().vel_w_i << std::endl;
+  imu_meas.predictState(frame_states[current_frame - 1], G,
+                        frame_states[current_frame]);
 
-  basalt::PoseVelBiasState<double> state1 = frame_states[current_frame-1];
-  meas->predictState(frame_states[current_frame - 1], G, state1);
-
-  // std::cout << "get start time " << meas->get_start_t_ns() << std::endl;
-
-  frame_states[current_frame] = state1;
-
-  std::cout << "after setting:\n" << frame_states[current_frame].bias_accel << std::endl;
-
-  // std::cout << "integrated rotation "
-  //           << frame_states[current_frame].getState().T_w_i.so3().matrix() << std::endl;
   std::cout << "integrated translation "
             << frame_states[current_frame].T_w_i.translation() << std::endl;
-  std::cout << "integrated velocity " << frame_states[current_frame].vel_w_i
-            << std::endl;
-  std::cout << "------------------------------" << std::endl;
 }
 
 // initialize the ba and bg
@@ -368,22 +324,22 @@ void integrate_imu(const Calibration& calib_cam,
 // velocity is considered to be 0)
 // Only initialize for a few initial frames
 // input t_ns: the first t
-void initialize(std::vector<basalt::ImuData<double>> imu_measurements,
+void initialize(int current_frame,
+                std::vector<basalt::ImuData<double>> imu_measurements,
                 const Calibration& calib_cam, std::vector<Timestamp> timestamps,
-                IMU_MEAS& imu_meas_map, FRAME_STATE& frame_states) {
+                IMU_MEAS imu_meas, FRAME_STATE& frame_states) {
+  imu_meas.clear();
   frame_states.clear();
-  basalt::ImuData<double> data = imu_measurements.front();
-  auto data_iter = imu_measurements.begin();
-  // int64_t t_ns = data.t_ns;
-  int64_t t_ns_init = timestamps.front();
-  auto t_ns_iter = timestamps.begin();
 
-  while ((*data_iter).t_ns < t_ns_init) {
-    (*data_iter).accel =
-        calib_cam.calib_accel_bias.getCalibrated((*data_iter).accel);
-    (*data_iter).gyro =
-        calib_cam.calib_gyro_bias.getCalibrated((*data_iter).gyro);
-    data_iter++;
+  auto data = imu_measurements.begin();
+
+  Eigen::Vector3d bg = Eigen::Vector3d::Zero();
+  Eigen::Vector3d ba = Eigen::Vector3d::Zero();
+
+  while (data->t_ns < timestamps[current_frame]) {
+    data->accel = calib_cam.calib_accel_bias.getCalibrated(data->accel);
+    data->gyro = calib_cam.calib_gyro_bias.getCalibrated(data->gyro);
+    data++;
   }
 
   // Need to calibrate imudata of timestamp which is equal to current_frame timestamp
@@ -393,29 +349,86 @@ void initialize(std::vector<basalt::ImuData<double>> imu_measurements,
         calib_cam.calib_gyro_bias.getCalibrated((*data_iter).gyro);
 
   using Vec3 = Eigen::Matrix<double, 3, 1>;
-  Vec3 vel_w_i_init;
+  Eigen::Matrix<double, 3, 1> vel_w_i_init;
   vel_w_i_init.setZero();  // for a few frames at the beginning, velocity is 0
 
   Sophus::SE3d T_w_i_init;
-  T_w_i_init.setQuaternion(Eigen::Quaternion<double>::FromTwoVectors(
-      (*data_iter).accel, Vec3::UnitZ()));
-  // std::cout << T_w_i_init.angleX() << std::endl;
+  T_w_i_init.setQuaternion(
+      Eigen::Quaternion<double>::FromTwoVectors(data->accel, Vec3::UnitZ()));
+  // frame_states[0].t_ns = timestamps.front();
 
-  Eigen::Vector3d bg = Eigen::Vector3d::Zero();
-  Eigen::Vector3d ba = Eigen::Vector3d::Zero();
-
-  // integration for the first frame state
-
-  int64_t last_state_t_ns = *t_ns_iter;
-  // IMU_MEAS imu_meas;
-  imu_meas_map[0] = basalt::IntegratedImuMeasurement<double>(last_state_t_ns,
-                                                              imu_measurements[1].gyro,
-                                                              imu_measurements[1].accel);
-  // FRAME_STATE frame_states;
-  frame_states[0] = basalt::PoseVelBiasState<double>(
-      last_state_t_ns, T_w_i_init, vel_w_i_init, imu_measurements[1].gyro, imu_measurements[1].accel);
+  // std::cout << "timestamp of frame_states[0]: " << frame_states[0].t_ns
+  //           << std::endl;
+  // imu_meas_init.predictState(frame_state_init, G, frame_states[0]);
+  int64_t last_state_t_ns;
+  last_state_t_ns = timestamps[current_frame];
+  imu_meas[last_state_t_ns] =
+      basalt::IntegratedImuMeasurement<double>(last_state_t_ns, bg, ba);
+  frame_states[last_state_t_ns] =
+      basalt::PoseVelState<double>(last_state_t_ns, T_w_i_init, vel_w_i_init);
 
   std::cout << "Initialization Finished ..." << std::endl;
+  std::cout << "frame_states[last_state_t_ns].t_ns "
+            << frame_states[last_state_t_ns].t_ns << std::endl;
+  std::cout << "T_w_i\n" << T_w_i_init.matrix() << std::endl;
+  std::cout << "vel_w_i " << vel_w_i_init.transpose() << std::endl;
+}
+
+void integrate_imu(int current_frame, std::vector<Timestamp> timestamps,
+                   std::vector<basalt::ImuData<double>>& imu_measurements,
+                   const Calibration& calib_cam, IMU_MEAS& imu_meas,
+                   FRAME_STATE& frame_states) {  // const Timestamp curr_t_ns,
+                                                 // const Timestamp last_t_ns,
+  // responsible for integration between frames. curr/last_t_ns are time for
+  // frames instead of IMU data
+  int64_t last_state_t_ns;
+  last_state_t_ns = timestamps[current_frame - 1];
+  auto last_state = frame_states.at(last_state_t_ns);
+  std::cout << "T_w_i for last state:\n"
+            << last_state.T_w_i.matrix() << std::endl;
+  std::cout << "vel_w_i for last state:\n" << last_state.vel_w_i << std::endl;
+  basalt::IntegratedImuMeasurement<double>::Ptr meas;
+  meas.reset(new basalt::IntegratedImuMeasurement<double>(
+      last_state_t_ns, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero()));
+  // reset is successful (have proved)
+
+  static const double accel_std_dev = 0.23;
+  static const double gyro_std_dev = 0.0027;
+
+  static const Eigen::Vector3d G(0, 0, -9.81);
+
+  Eigen::Vector3d accel_cov, gyro_cov;
+  accel_cov.setConstant(accel_std_dev * accel_std_dev);
+  gyro_cov.setConstant(gyro_std_dev * gyro_std_dev);
+  // accel_cov.setConstant(0);
+  // gyro_cov.setConstant(0);
+  for (auto& imudata : imu_measurements) {
+    if (imudata.t_ns > last_state_t_ns &&
+        imudata.t_ns <= timestamps[current_frame]) {
+      imudata.accel = calib_cam.calib_accel_bias.getCalibrated(imudata.accel);
+      imudata.gyro = calib_cam.calib_gyro_bias.getCalibrated(imudata.gyro);
+      meas->integrate(imudata, accel_cov, gyro_cov);
+    }
+  }
+  // Yes, it is integrated.
+
+  basalt::PoseVelState<double> next_state = frame_states.at(last_state_t_ns);
+
+  meas->predictState(frame_states.at(last_state_t_ns), G, next_state);
+
+  last_state_t_ns = timestamps[current_frame];
+  next_state.t_ns = timestamps[current_frame];
+
+  frame_states[last_state_t_ns] = basalt::PoseVelState<double>(next_state);
+  // imu_meas[meas->get_start_t_ns()] = *meas;
+  imu_meas[last_state_t_ns] = *meas;
+  std::cout << "last_state_t_ns: " << last_state_t_ns << std::endl;
+  std::cout << "meas->get_start_t_ns(): " << meas->get_start_t_ns()
+            << std::endl;
+  std::cout << "integrated transformation:\n"
+            << frame_states[last_state_t_ns].T_w_i.matrix() << std::endl;
+  std::cout << "integrated velocity:\n"
+            << frame_states[last_state_t_ns].vel_w_i.matrix() << std::endl;
 }
 
 }  // namespace visnav

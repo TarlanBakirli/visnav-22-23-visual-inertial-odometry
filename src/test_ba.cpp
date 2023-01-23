@@ -64,8 +64,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <visnav/serialization.h>
 #include <basalt/imu/imu_types.h>
-#include <visnav/vio_utils.h>
-// #include <basalt/utils/vio_estimator.cpp>
 
 using namespace visnav;
 using namespace basalt;
@@ -80,11 +78,10 @@ void draw_scene();
 void load_data(const std::string& path, const std::string& calib_path);
 void load_imu_data(const std::string& path);
 void load_gt_data_state(const std::string& path);
-// void load_gt_data_pose(const std::string& path);
+void load_gt_data_pose(const std::string& path);
 bool next_step();
 void optimize();
 void compute_projections();
-void evaluationButton();
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Constants
@@ -174,23 +171,12 @@ Sophus::SE3d T_w_i_init;
 IMU_MEAS imu_meas;
 FRAME_STATE frame_states;
 // int new_frame = 0;
-// std::set<FrameId> buffer_frames;
+std::set<FrameId> buffer_frames;
 int max_num_buffers = 3;
 // FRAME_STATE keyframe_states;
 // basalt::IntegratedImuMeasurement<double> imu_meas_init(1403636579753555584,
 //                                                        Eigen::Vector3d::Zero(),
 //                                                        Eigen::Vector3d::Zero());
-
-// For camera - IMU sysem transfer
-Eigen::Matrix4d T_c_i;
-Sophus::SE3d T_gt_init;
-
-std::vector<int64_t> vio_t_ns;
-Eigen::aligned_vector<Eigen::Vector3d> vio_t_w_i;
-Eigen::aligned_vector<Sophus::SE3d> vio_T_w_i;
-
-std::vector<int64_t> gt_t_ns;
-Eigen::aligned_vector<Eigen::Vector3d> gt_t_w_i;
 
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI parameters
@@ -203,11 +189,6 @@ Eigen::aligned_vector<Eigen::Vector3d> gt_t_w_i;
 pangolin::Var<bool> ui_show_hidden("ui.show_extra_options", false, true);
 
 //////////////////////////////////////////////
-/// For VIO Project:
-
-pangolin::DataLog imu_data_log, vio_data_log, error_data_log;
-pangolin::Plotter* plotter;
-
 /// Image display options
 
 pangolin::Var<int> show_frame1("ui.show_frame1", 0, 0, 1500);
@@ -227,13 +208,6 @@ pangolin::Var<bool> show_cameras3d("hidden.show_cameras", true, true);
 pangolin::Var<bool> show_points3d("hidden.show_points", true, true);
 pangolin::Var<bool> show_old_points3d("hidden.show_old_points3d", true, true);
 
-pangolin::Var<bool> show_est_pos("ui.show_est_pos", true, false, true);
-// pangolin::Var<bool> show_est_vel("ui.show_est_vel", false, false, true);
-// pangolin::Var<bool> show_est_bg("ui.show_est_bg", false, false, true);
-// pangolin::Var<bool> show_est_ba("ui.show_est_ba", false, false, true);
-
-pangolin::Var<bool> show_gt("ui.show_gt", true, false, true);
-
 //////////////////////////////////////////////
 /// Feature extraction and matching options
 
@@ -249,7 +223,7 @@ pangolin::Var<double> match_max_dist_2d("hidden.match_max_dist_2d", 20.0, 1.0,
 
 pangolin::Var<int> new_kf_min_inliers("hidden.new_kf_min_inliers", 80, 1, 200);
 
-pangolin::Var<int> max_num_kfs("hidden.max_num_kfs", 10, 5,
+pangolin::Var<int> max_num_kfs("hidden.max_num_kfs", 7, 5,
                                20);  // default: 10, change for VIO
 
 pangolin::Var<double> cam_z_threshold("hidden.cam_z_threshold", 0.1, 1.0, 0.0);
@@ -281,10 +255,6 @@ using Button = pangolin::Var<std::function<void(void)>>;
 
 Button next_step_btn("ui.next_step", &next_step);
 
-// alignSVD button
-
-Button evaluation_btn("ui.evaluation", &evaluationButton);
-
 ///////////////////////////////////////////////////////////////////////////////
 /// GUI and Boilerplate Implementation
 ///////////////////////////////////////////////////////////////////////////////
@@ -313,50 +283,19 @@ int main(int argc, char** argv) {
   load_data(dataset_path, cam_calib);
   load_imu_data(dataset_path);
   load_gt_data_state(dataset_path);
-  // load_gt_data_pose(dataset_path);
+  load_gt_data_pose(dataset_path);
 
-  // for (size_t i = 0; i < gt_state_measurements.size(); i++) {
-  //   gt_t_ns.push_back(gt_state_timestamps[i]);
-  //   gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
-  // }
-
+  for (const auto timestamp : timestamps) {
+    Sophus::SE3d SE3_qt(gt_state_measurements[timestamp].q,
+                        gt_state_measurements[timestamp].pos);
+    frame_states[timestamp].T_w_i = SE3_qt;
+    frame_states[timestamp].vel_w_i = gt_state_measurements[timestamp].vel;
+  }
+  std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
   // initialization
   // initialize(current_frame, imu_measurements, calib_cam, timestamps,
   // imu_meas,
   //            frame_states);
-  // std::cout << "rotation matrix:\n"
-  //           << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
-  // std::cout << "translation matrix:\n"
-  //           << calib_cam.T_i_c[0].translation() << std::endl;
-  // std::cout << "before transformation"
-  //           << gt_state_measurements[1403636580838555648].pos << std::endl;
-  // std::cout << "after transformation"
-  //           << calib_cam.T_i_c[0].rotationMatrix().inverse() *
-  //                      gt_state_measurements[1403636580838555648].pos -
-  //                  calib_cam.T_i_c[0].translation()
-  //           << std::endl;
-
-  // std::cout << "delta gt_state"
-  //           << gt_state_measurements[1403636580838555648].pos << std::endl;
-
-  // T_gt_init.translation() = gt_state_measurements[1403636580838555648].pos;
-  // T_gt_init.rotationMatrix() =
-  //     gt_state_measurements[1403636580838555648].q.toRotationMatrix();
-
-  // Sophus::SE3d SE3_qt(gt_state_measurements[1403636580838555648].q,
-  //                     gt_state_measurements[1403636580838555648].pos);
-  // T_gt_init = SE3_qt;
-
-  /// For VIO Project: save grount truth pose
-  {
-    gt_t_ns.clear();
-    gt_t_w_i.clear();
-
-    for (size_t i = 0; i < gt_state_timestamps.size(); i++) {
-      gt_t_ns.push_back(gt_state_timestamps[i]);
-      gt_t_w_i.push_back(gt_state_measurements[gt_state_timestamps[i]].pos);
-    }
-  }
 
   if (show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
@@ -373,15 +312,6 @@ int main(int argc, char** argv) {
     pangolin::View& img_view_display =
         pangolin::Display("images").SetLayout(pangolin::LayoutEqual);
     main_view.AddDisplay(img_view_display);
-
-    /// For VIO Project
-    // pangolin::View& plot_display = pangolin::CreateDisplay().SetBounds(
-    //     0.0, 0.4, pangolin::Attach::Pix(UI_WIDTH), 1.0);
-    // plotter = new pangolin::Plotter(&imu_data_log, 0.0, 100, -10.0, 10.0,
-    // 0.01f,
-    //                                 0.01f);
-    // plot_display.AddDisplay(*plotter);
-    /// End
 
     // main ui panel
     pangolin::CreatePanel("ui").SetBounds(0.0, 1.0, 0.0,
@@ -496,9 +426,6 @@ int main(int argc, char** argv) {
       // nop
     }
   }
-
-  /// VIO Project
-  // evaluation();
 
   return 0;
 }
@@ -833,20 +760,6 @@ void draw_scene() {
     }
     glEnd();
   }
-
-  /// For VIO project: render estimated trajectory
-
-  glColor3ubv(color_selected_left);
-  if (!vio_t_w_i.empty()) {
-    size_t end = std::min(vio_t_w_i.size(), size_t(show_frame1 + 1));
-    Eigen::aligned_vector<Eigen::Vector3d> sub_gt(vio_t_w_i.begin(),
-                                                  vio_t_w_i.begin() + end);
-    pangolin::glDrawLineStrip(sub_gt);
-  }
-  // render ground truth trajectory
-  glColor3ubv(color_camera_current);
-  if (show_gt) pangolin::glDrawLineStrip(gt_t_w_i);
-  /// End
 }
 
 // Load images, calibration, and features / matches if available
@@ -964,8 +877,8 @@ void load_gt_data_state(const std::string& dataset_path) {
 
     if (line.size() < 20 || line[0] == '#') continue;
 
-    // std::string timestamp_str = line.substr(0, 19);
-    std::istringstream ss(line);
+    std::string timestamp_str = line.substr(0, 19);
+    std::istringstream ss(timestamp_str);
 
     char tmp;
     Timestamp timestamp;
@@ -992,6 +905,35 @@ void load_gt_data_state(const std::string& dataset_path) {
             << std::endl;
 }
 
+void load_gt_data_pose(const std::string& dataset_path) {
+  const std::string timestams_path = dataset_path + "/leica0/data.csv";
+  std::ifstream f(timestams_path);
+
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.size() < 20 || line[0] == '#') continue;
+
+    std::stringstream ss(line);
+
+    char tmp;
+    uint64_t timestamp;
+    Eigen::Quaterniond q;
+    Eigen::Vector3d pos;
+
+    ss >> timestamp >> tmp >> pos[0] >> tmp >> pos[1] >> tmp >> pos[2] >> tmp >>
+        q.w() >> tmp >> q.x() >> tmp >> q.y() >> tmp >> q.z();
+
+    gt_pose_timestamps.push_back(timestamp);
+
+    GT_Pose gt_pose;
+    gt_pose.pos = pos;
+    gt_pose.q = q;
+    gt_pose_measurements[timestamp] = gt_pose;
+  }
+  std::cerr << "Loaded " << gt_pose_measurements.size() << " GT poses"
+            << std::endl;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Here the algorithmically interesting implementation begins
 ///////////////////////////////////////////////////////////////////////////////
@@ -1000,9 +942,9 @@ void load_gt_data_state(const std::string& dataset_path) {
 // until it returns false for automatic execution.
 bool next_step() {
   // std::cout << "FrameId of new frame: " << new_frame << std::endl;
-  // buffer_frames.emplace(current_frame);  // default: new_frame
-  // if (buffer_frames.size() > size_t(max_num_buffers))
-  //   buffer_frames.erase(buffer_frames.begin());
+  buffer_frames.emplace(current_frame);  // default: new_frame
+  if (buffer_frames.size() > size_t(max_num_buffers))
+    buffer_frames.erase(buffer_frames.begin());
 
   // current_frame = *buffer_frames.rbegin();
 
@@ -1011,6 +953,7 @@ bool next_step() {
   const Sophus::SE3d T_0_1 = calib_cam.T_i_c[0].inverse() * calib_cam.T_i_c[1];
 
   // integrate for each current frame
+  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   // Timestamp curr_t_ns, last_t_ns;
   // std::istringstream issc(images.at(fcidl));
@@ -1021,18 +964,14 @@ bool next_step() {
 
   // integrate_imu(current_frame, timestamps, imu_measurements, calib_cam,
   //               imu_meas, frame_states);
-
-  // std::cout << "frame_states.size() " << frame_states.size() <<
-  // std::endl; std::cout << "integrated value " <<
-  // imu_meas.get_d_state_d_ba()
+  // std::cout << "frame_states.size() " << frame_states.size() << std::endl;
+  // std::cout << "integrated value " << imu_meas.get_d_state_d_ba()
   //           << std::endl;
   // std::cout << "imu_meas.size(): " << imu_meas.size() << std::endl;
   // std::cout << "frame_states.size(): " << frame_states.size() << std::endl;
   // std::cout << "imu_meas.[current_frame]:"
   //           << imu_meas[current_frame - 1].get_dt_ns() << std::endl;
   // }
-
-  FrameCamId fcidl(current_frame, 0), fcidr(current_frame, 1);
 
   if (take_keyframe) {
     take_keyframe = false;
@@ -1097,19 +1036,13 @@ bool next_step() {
     add_new_landmarks(fcidl, fcidr, kdl, kdr, calib_cam, md_stereo, md,
                       landmarks, next_landmark_id);
 
-    remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks, old_landmarks,
-                         kf_frames);
-    // remove_old_keyframes_with_IMU(fcidl, max_num_kfs, cameras, landmarks,
-    //                               old_landmarks, kf_frames);
+    // remove_old_keyframes(fcidl, max_num_kfs, cameras, landmarks,
+    // old_landmarks, kf_frames);
+    remove_old_keyframes_with_IMU(fcidl, max_num_kfs, cameras, landmarks,
+                                  old_landmarks, kf_frames);
     optimize();
 
     current_pose = cameras[fcidl].T_w_c;
-
-    /// For VIO Project:
-    vio_t_ns.push_back(timestamps[current_frame]);
-    vio_t_w_i.push_back(current_pose.translation());
-    vio_T_w_i.push_back(current_pose);
-    /// End
 
     // update image views
     change_display_to_image(fcidl);
@@ -1151,12 +1084,6 @@ bool next_step() {
                     reprojection_error_pnp_inlier_threshold_pixel, md);
 
     current_pose = md.T_w_c;
-
-    /// For VIO Project:
-    vio_t_ns.push_back(timestamps[current_frame]);
-    vio_t_w_i.push_back(current_pose.translation());
-    vio_T_w_i.push_back(current_pose);
-    /// End
 
     if (int(md.inliers.size()) < new_kf_min_inliers && !opt_running &&
         !opt_finished) {
@@ -1242,10 +1169,9 @@ void optimize() {
             << landmarks.size() << " points and " << num_obs << " observations."
             << std::endl;
 
-  // Fix oldest two cameras to fix SE3 and scale gauge. Making the whole
-  // second camera constant is a bit suboptimal, since we only need 1 DoF,
-  // but it's simple and the initial poses should be good from
-  // calibration.
+  // Fix oldest two cameras to fix SE3 and scale gauge. Making the whole second
+  // camera constant is a bit suboptimal, since we only need 1 DoF, but it's
+  // simple and the initial poses should be good from calibration.
   FrameId fid = *(kf_frames.begin());
   // std::cout << "fid " << fid << std::endl;
   // std::cout << "kf_frames " << kf_frames.size() << std::endl;
@@ -1271,13 +1197,11 @@ void optimize() {
 
   opt_thread.reset(new std::thread([fid, ba_options] {
     std::set<FrameCamId> fixed_cameras = {{fid, 0}, {fid, 1}};
-    bundle_adjustment(feature_corners, ba_options, fixed_cameras, calib_cam_opt,
-                      cameras_opt, landmarks_opt);
-    // bundle_adjustment_with_IMU(feature_corners, ba_options,
-    // fixed_cameras,
-    //                            calib_cam_opt, cameras_opt,
-    //                            landmarks_opt, imu_meas, frame_states,
-    //                            kf_frames, buffer_frames, timestamps);
+
+    bundle_adjustment_with_IMU(feature_corners, ba_options, fixed_cameras,
+                               calib_cam_opt, cameras_opt, landmarks_opt,
+                               imu_meas, frame_states, kf_frames, buffer_frames,
+                               timestamps);
 
     opt_finished = true;
     opt_running = false;
@@ -1286,7 +1210,3 @@ void optimize() {
   // Update project info cache
   compute_projections();
 }
-
-///// VIO Project
-
-void evaluationButton() { alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i); }
