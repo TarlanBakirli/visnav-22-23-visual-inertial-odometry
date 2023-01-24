@@ -7,6 +7,9 @@ data/V1_01_easy/
 
 data/MH_01_easy
 
+estimated_pose.txt
+gt_data.txt
+
 *.cereal
 .DS_Store
 *~
