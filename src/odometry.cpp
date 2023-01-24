@@ -1306,15 +1306,21 @@ void evaluate_rpe() {
   const char *filename = "./evaluate_rpe.py";
 	FILE* python_script = fopen(filename, "r");
 
-  int argc = 3;
-  char * argv[3];
+  int argc = 4;
+  const char * argv[4];
 
-  argv[0] = (char*)"evaluate_rpe.py";
-  argv[1] = (char*)"gt_data.txt";
-  argv[2] = (char*)"estimated_pose.txt";
+  argv[0] = "evaluate_rpe.py";
+  argv[1] = "gt_data.txt";
+  argv[2] = "estimated_pose.txt";
+  argv[3] = "--verbose";
+
+  wchar_t** wargv = new wchar_t*[argc];
+	for (int i = 0; i < argc; i++) {
+		wargv[i] = Py_DecodeLocale(argv[i], NULL);
+	}
 
 	Py_Initialize();
-  PySys_SetArgv(argc, argv);
+  PySys_SetArgv(argc, wargv);
 	PyRun_SimpleFile(python_script, filename);
 	Py_Finalize();
 
