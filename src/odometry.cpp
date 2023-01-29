@@ -252,8 +252,8 @@ pangolin::Var<double> match_max_dist_2d("hidden.match_max_dist_2d", 20.0, 1.0,
 
 pangolin::Var<int> new_kf_min_inliers("hidden.new_kf_min_inliers", 80, 1, 200);
 
-pangolin::Var<int> max_num_kfs("hidden.max_num_kfs", 10, 5,
-                               20);  // default: 10, change for VIO
+pangolin::Var<int> max_num_kfs("hidden.max_num_kfs", 7, 5,
+                               20);  // default: 10, change to 7 for VIO
 
 pangolin::Var<double> cam_z_threshold("hidden.cam_z_threshold", 0.1, 1.0, 0.0);
 
@@ -328,28 +328,6 @@ int main(int argc, char** argv) {
   // initialization
   initialize(current_frame, imu_measurements, calib_cam, timestamps, imu_meas,
              frame_states);
-  // std::cout << "rotation matrix:\n"
-  //           << calib_cam.T_i_c[0].rotationMatrix() << std::endl;
-  // std::cout << "translation matrix:\n"
-  //           << calib_cam.T_i_c[0].translation() << std::endl;
-  // std::cout << "before transformation"
-  //           << gt_state_measurements[1403636580838555648].pos << std::endl;
-  // std::cout << "after transformation"
-  //           << calib_cam.T_i_c[0].rotationMatrix().inverse() *
-  //                      gt_state_measurements[1403636580838555648].pos -
-  //                  calib_cam.T_i_c[0].translation()
-  //           << std::endl;
-
-  // std::cout << "delta gt_state"
-  //           << gt_state_measurements[1403636580838555648].pos << std::endl;
-
-  // T_gt_init.translation() = gt_state_measurements[1403636580838555648].pos;
-  // T_gt_init.rotationMatrix() =
-  //     gt_state_measurements[1403636580838555648].q.toRotationMatrix();
-
-  // Sophus::SE3d SE3_qt(gt_state_measurements[1403636580838555648].q,
-  //                     gt_state_measurements[1403636580838555648].pos);
-  // T_gt_init = SE3_qt;
 
   /// For VIO Project: save grount truth pose
   {
@@ -1310,7 +1288,7 @@ void evaluate_rpe() {
   const char * argv[4];
 
   argv[0] = "evaluate_rpe.py";
-  argv[1] = "gt_data.txt";
+  argv[1] = "gt_data_MH_02.txt"; // gt_data_MH_01.txt, gt_data_MH_02.txt, gt_data_MH_03.txt
   argv[2] = "estimated_pose.txt";
   argv[3] = "--verbose";
 
@@ -1323,5 +1301,4 @@ void evaluate_rpe() {
   PySys_SetArgv(argc, wargv);
 	PyRun_SimpleFile(python_script, filename);
 	Py_Finalize();
-
 }
